@@ -369,8 +369,15 @@ function baht(n) { return '฿' + Number(n || 0).toLocaleString('th-TH', { maxim
 function ceilUnits(x) { var t = Math.round(x * 10) / 10; return t < 0 ? t : Math.ceil(t); }
 function rawDiff(prev, now, roll) {
   if (prev === null || now === null) return null;
-  if (roll) { var d = Math.max(4, String(Math.floor(prev)).length); return Math.round((now + Math.pow(10, d) - prev) * 10) / 10; }
+  if (roll) return Math.round(((((now - prev) % 10000) + 10000) % 10000) * 10) / 10; // วนรอบเกิน 9,999 (ต้องตรงกับ units_ ใน Code.gs)
   return Math.round((now - prev) * 10) / 10;
+}
+// เพดานหน่วยที่เป็นไปได้ต่อเดือน (ใช้ตัดสินว่าเลขที่น้อยลงคือมิเตอร์วนรอบ ไม่ใช่จดผิด)
+function maxUnits(r, f) { var avg = r && r[f] ? r[f].avg : null; return Math.max(avg ? avg * 5 : 0, f === 'elec' ? 1500 : 250); }
+// เลขใหม่น้อยกว่าเดือนก่อน + คิดแบบวนรอบแล้วหน่วยสมเหตุสมผล = มิเตอร์วนรอบ
+function looksRolled(r, f, prev, now) {
+  if (prev === null || now === null || now >= prev) return false;
+  return rawDiff(prev, now, true) <= maxUnits(r, f);
 }
 function units(prev, now, roll) { var d = rawDiff(prev, now, roll); return d === null ? null : ceilUnits(d); }
 function loadScript(src) {
@@ -448,6 +455,7 @@ function setData(d) {
   if (!d || d.month !== S.month) return;
   S.q.forEach(function (p) { if (p.month === d.month) { var r = d.rows.filter(function (x) { return x.room === p.room; })[0]; if (r) r._saving = true; } });
   S.data = d;
+  S.sum = null; // สรุปรายเดือนอาจเปลี่ยน — โหลดใหม่เมื่อต้องใช้
 }
 function rowOf(room) { return S.data ? S.data.rows.filter(function (r) { return r.room === room; })[0] : null; }
 function hasF(r, f) { return !!(r.reading && String(r.reading[f] == null ? '' : r.reading[f]) !== ''); }
@@ -509,7 +517,9 @@ function rDash() {
   var due = (d.unpaid || []).reduce(function (a, b) { return a + (b.total || 0) - (b.paidAmt || 0); }, 0);
   var nE = occ.filter(function (r) { return hasF(r, 'elec'); }).length, nW = occ.filter(function (r) { return hasF(r, 'water'); }).length;
   var ready = occ.filter(function (r) { return r.total !== null; }).length;
-  var h = '<div class="kpis">' +
+  var h = rangeBar();
+  if (S.dRange !== 'month') h += rangeKpis(rows, occ, due, d);
+  else h += '<div class="kpis">' +
     '<div class="kpi ok"><div class="l">' + ic('money') + 'รายรับเดือนนี้<\/div><div class="v">' + baht(paid) + '<\/div><div class="s">ชำระแล้ว ' + nPaid + ' จาก ' + bills.length + ' บิล<\/div><\/div>' +
     '<div class="kpi acc"><div class="l">' + ic('trend') + 'อัตราการเก็บเงิน<\/div><div class="v">' + (tot ? (paid / tot * 100).toFixed(1) : '0') + '%<\/div><div class="s">จากยอดบิล ' + baht(tot) + '<\/div><\/div>' +
     '<div class="kpi pri"><div class="l">' + ic('home') + 'อัตราการเข้าพัก<\/div><div class="v">' + (rows.length ? (occ.length / rows.length * 100).toFixed(1) : '0') + '%<\/div><div class="s">มีผู้เช่า ' + occ.length + ' / ' + rows.length + ' ห้อง<\/div><\/div>' +
@@ -531,6 +541,58 @@ function rDash() {
     '<div class="it" data-tab="rooms"><div class="t">ห้องว่าง<\/div><div class="a">' + (rows.length - occ.length) + '<\/div><\/div>' +
     '<div class="it" data-tab="pay"><div class="t">ยังไม่ชำระเดือนนี้<\/div><div class="a" style="color:var(--bad)">' + rows.filter(isUnpaid).length + '<\/div><\/div>' +
     '<div class="it" data-tab="meter"><div class="t">ยังจดมิเตอร์ไม่ครบ<\/div><div class="a" style="color:var(--elec)">' + occ.filter(function (r) { return !hasF(r, 'elec') || !hasF(r, 'water'); }).length + '<\/div><\/div><\/div><\/div><\/div>';
+  return h;
+}
+
+// ช่วงเวลาของหน้าภาพรวม: month = เดือนที่เลือกด้านบน, อื่นๆ = รวมจากสรุปรายเดือน (getSummary)
+var RANGES = [['month', 'เดือนนี้'], ['3m', '3 เดือน'], ['6m', '6 เดือน'], ['year', 'ทั้งปี'], ['all', 'ทั้งหมด'], ['custom', 'กำหนดเอง']];
+S.dRange = ls('rent.drange') || 'month';
+S.dFrom = ls('rent.dfrom') || ''; S.dTo = ls('rent.dto') || '';
+function dashSpan() {
+  var m = S.month, r = S.dRange, list = (S.sum || []).map(function (x) { return x.month; }).sort();
+  if (r === '3m') return [addMonth(m, -2), m];
+  if (r === '6m') return [addMonth(m, -5), m];
+  if (r === 'year') return [m.slice(0, 4) + '-01', m.slice(0, 4) + '-12'];
+  if (r === 'all') return [list[0] || m, list[list.length - 1] || m];
+  if (r === 'custom') { var a = S.dFrom || addMonth(m, -2), b = S.dTo || m; return a <= b ? [a, b] : [b, a]; }
+  return [m, m];
+}
+function rangeBar() {
+  var h = '<div class="card" style="padding:12px 16px"><div class="row"><b style="font-size:14px">ช่วงเวลา<\/b><div class="fchips grow">' +
+    RANGES.map(function (x) { return '<button data-act="dRange" data-v="' + x[0] + '" class="' + (S.dRange === x[0] ? 'on' : '') + '">' + x[1] + '<\/button>'; }).join('') + '<\/div>';
+  if (S.dRange === 'custom') {
+    var sp = dashSpan(), opts = function (sel) {
+      var out = '', m = todayStr().slice(0, 7);
+      for (var i = 0; i < 36; i++) { out += '<option value="' + m + '"' + (m === sel ? ' selected' : '') + '>' + monthLabel(m) + '<\/option>'; m = addMonth(m, -1); }
+      return out;
+    };
+    h += '<div class="row" style="width:100%"><span class="muted">จาก<\/span><select id="d-from" style="flex:1;min-width:140px">' + opts(sp[0]) + '<\/select><span class="muted">ถึง<\/span><select id="d-to" style="flex:1;min-width:140px">' + opts(sp[1]) + '<\/select><\/div>';
+  }
+  return h + '<\/div><\/div>';
+}
+function rangeKpis(rows, occ, due, d) {
+  if (!S.sum) { loadSummary(); return '<div class="card loading">กำลังรวมข้อมูลช่วงเวลา…<\/div>'; }
+  var sp = dashSpan(), L = S.sum.filter(function (m) { return m.month >= sp[0] && m.month <= sp[1]; }).sort(function (a, b) { return a.month < b.month ? -1 : 1; });
+  var t = { billed: 0, paid: 0, outstanding: 0, rent: 0, elec: 0, water: 0, other: 0, elecUnits: 0, waterUnits: 0, bills: 0 };
+  L.forEach(function (m) { Object.keys(t).forEach(function (k) { t[k] += m[k] || 0; }); });
+  var n = L.length || 1, label = monthLabel(sp[0]) + (sp[0] !== sp[1] ? ' – ' + monthLabel(sp[1]) : '');
+  var h = '<div class="muted" style="margin:-4px 0 10px;font-size:14px">' + label + ' · มีบิล ' + L.length + ' เดือน<\/div>' +
+    '<div class="kpis">' +
+    '<div class="kpi ok"><div class="l">' + ic('money') + 'รายรับ (ชำระแล้ว)<\/div><div class="v">' + baht(t.paid) + '<\/div><div class="s">เฉลี่ย ' + baht(t.paid / n) + ' / เดือน<\/div><\/div>' +
+    '<div class="kpi acc"><div class="l">' + ic('trend') + 'อัตราการเก็บเงิน<\/div><div class="v">' + (t.billed ? (t.paid / t.billed * 100).toFixed(1) : '0') + '%<\/div><div class="s">จากยอดบิล ' + baht(t.billed) + ' (' + t.bills + ' บิล)<\/div><\/div>' +
+    '<div class="kpi pri"><div class="l">' + ic('home') + 'อัตราการเข้าพัก (ตอนนี้)<\/div><div class="v">' + (rows.length ? (occ.length / rows.length * 100).toFixed(1) : '0') + '%<\/div><div class="s">มีผู้เช่า ' + occ.length + ' / ' + rows.length + ' ห้อง<\/div><\/div>' +
+    '<div class="kpi bad"><div class="l">' + ic('alert') + 'ค้างชำระในช่วงนี้<\/div><div class="v">' + baht(t.outstanding) + '<\/div><div class="s">ค้างทั้งหมดตอนนี้ ' + baht(due) + '<\/div><\/div><\/div>';
+  h += '<div class="kpis">' +
+    '<div class="kpi"><div class="l">' + ic('rooms') + 'ค่าห้อง<\/div><div class="v">' + baht(t.rent) + '<\/div><\/div>' +
+    '<div class="kpi elec"><div class="l">' + ic('bolt') + 'ค่าไฟ<\/div><div class="v">' + baht(t.elec) + '<\/div><div class="s">' + fmt(t.elecUnits) + ' หน่วย<\/div><\/div>' +
+    '<div class="kpi water"><div class="l">' + ic('drop') + 'ค่าน้ำ<\/div><div class="v">' + baht(t.water) + '<\/div><div class="s">' + fmt(t.waterUnits) + ' หน่วย<\/div><\/div>' +
+    '<div class="kpi"><div class="l">' + ic('bill') + 'ค่าปรับ / อื่นๆ<\/div><div class="v">' + baht(t.other) + '<\/div><\/div><\/div>';
+  if (L.length > 1) {
+    var mx = Math.max.apply(null, L.map(function (m) { return m.billed; }).concat([1]));
+    h += '<div class="card"><h3><span class="grow">รายรับรายเดือนในช่วงนี้<\/span><button class="link" data-tab="report">รายงาน ' + ic('arrow') + '<\/button><\/h3><div class="chart">' + L.map(function (m) {
+      return '<div title="' + monthLabel(m.month) + ' ยอดบิล ' + money(m.billed) + ' รับแล้ว ' + money(m.paid) + '"><span style="display:flex;gap:3px;align-items:flex-end;height:100%;width:100%;justify-content:center"><i style="height:' + (m.billed / mx * 100) + '%"><\/i><i class="paid" style="height:' + (Math.min(m.paid, m.billed * 1.5) / mx * 100) + '%"><\/i><\/span><small>' + monthShort(m.month) + '<\/small><\/div>';
+    }).join('') + '<\/div><\/div>';
+  }
   return h;
 }
 
@@ -629,7 +691,7 @@ function openMeter(room) {
   var rd = r.reading || {};
   D = {
     room: room, elec: rd.elec || '', water: rd.water || '', elecPrev: rd.elecPrev || '', waterPrev: rd.waterPrev || '',
-    elecRoll: !!rd.elecRoll, waterRoll: !!rd.waterRoll, note: rd.note || '',
+    elecRoll: !!rd.elecRoll, waterRoll: !!rd.waterRoll, elecRollSet: !!rd.elecRoll, waterRollSet: !!rd.waterRoll, note: rd.note || '',
     editElec: !!rd.elecPrev || r.elec.autoPrev === null, editWater: !!rd.waterPrev || r.water.autoPrev === null
   };
   openModal(meterHtml(r), 'meter');
@@ -677,7 +739,9 @@ function updInfo(f) {
   else if (now === null) h = '<span class="muted">พิมพ์เลขบนมิเตอร์' + name + ' หรือกดปุ่มกล้องเพื่อสแกน<\/span>';
   else if (prev === null) h = '<span class="e">ใส่เลขมิเตอร์เดือนก่อนด้วย<\/span>';
   else {
-    if (now < prev || roll) h += '<label><input type="checkbox" id="roll-' + f + '"' + (roll ? ' checked' : '') + '> มิเตอร์วนรอบ (เลขเกินหลักสุดท้ายแล้วเริ่มนับ 0 ใหม่)<\/label>';
+    if (!D[f + 'RollSet']) { roll = looksRolled(r, f, prev, now); D[f + 'Roll'] = roll; }
+    if (now < prev || roll) h += '<label><input type="checkbox" id="roll-' + f + '"' + (roll ? ' checked' : '') + '> มิเตอร์วนรอบ (เกิน 9,999 แล้วเริ่มนับ 0000 ใหม่)<\/label>' +
+      (roll && !D[f + 'RollSet'] ? '<div class="w">ตรวจพบมิเตอร์วนรอบ — คิดต่อเนื่องให้แล้ว: ' + fmt(prev) + ' → ' + fmt(now) + ' = ' + fmt(units(prev, now, true)) + ' หน่วย (ถ้าไม่ใช่ ติ๊กออก)<\/div>' : '');
     var u = units(prev, now, roll);
     if (u < 0) h = '<div class="e">เลขน้อยกว่าเดือนก่อน (' + fmt(prev) + ')<\/div>' + h + '<div class="muted" style="font-size:13px">ถ้าเปลี่ยนมิเตอร์ใหม่ กด "แก้" เลขเดือนก่อน แล้วใส่เลขเริ่มของมิเตอร์ใหม่<\/div>';
     else {
@@ -849,8 +913,8 @@ function scPrev() { if (SC.prevF) return null; var r = rowOf(SC.room); return D 
 function plausible(v) {
   if (SC.prevF) return true;
   var prev = scPrev(); if (prev === null) return true;
-  var avg = rowOf(SC.room)[SC.f].avg, max = Math.max(avg ? avg * 5 : 0, SC.f === 'elec' ? 1500 : 250);
-  return v >= prev && v - prev <= max;
+  var r = rowOf(SC.room), max = maxUnits(r, SC.f);
+  return v >= prev ? v - prev <= max : (v < 10000 && looksRolled(r, SC.f, prev, v)); // รวมกรณีมิเตอร์วนรอบ
 }
 function pickBest(cands) {
   var ok = cands.filter(plausible);
@@ -858,8 +922,8 @@ function pickBest(cands) {
   var prev = scPrev(), avg = rowOf(SC.room)[SC.f].avg;
   ok.sort(function (a, b) {
     if (prev === null) return String(b).replace('.', '').length - String(a).replace('.', '').length;
-    var t = prev + (avg || 0);
-    return Math.abs(a - t) - Math.abs(b - t);
+    var ua = rawDiff(prev, a, a < prev), ub = rawDiff(prev, b, b < prev), t = avg || 0;
+    return Math.abs(ua - t) - Math.abs(ub - t);
   });
   return ok[0];
 }
@@ -946,7 +1010,7 @@ function showResult(best, cands, canvas) {
   var prev = scPrev();
   document.getElementById('scRes').innerHTML = (canvas ? '<img src="' + canvas.toDataURL('image/jpeg', 0.8) + '" alt="">' : '') +
     '<div class="sc-val" id="scVal">' + fmt(best) + '<\/div>' +
-    (prev !== null ? '<div style="text-align:center;font-size:13px;color:#e9ddd0">เดือนก่อน ' + fmt(prev) + ' → ใช้ ' + fmt(units(prev, best, false)) + ' หน่วย<\/div>' : '') +
+    (prev !== null ? '<div style="text-align:center;font-size:13px;color:#e9ddd0">เดือนก่อน ' + fmt(prev) + ' → ใช้ ' + fmt(units(prev, best, best < prev)) + ' หน่วย' + (best < prev ? ' (มิเตอร์วนรอบ)' : '') + '<\/div>' : '') +
     (alts.length > 1 ? '<div class="sc-alts">' + alts.map(function (v) { return '<button data-act="scAlt" data-v="' + v + '" class="' + (v === best ? 'on' : '') + '">' + fmt(v) + '<\/button>'; }).join('') + '<\/div>' : '') +
     '<div class="sc-btns"><button class="btn" data-act="scAgain">↻ สแกนใหม่<\/button><button class="btn primary" data-act="scUse">✓ ใช้ค่านี้<\/button><\/div>';
   scStatus('ตรวจให้ตรงกับมิเตอร์ก่อนกด "ใช้ค่านี้"');
@@ -1115,9 +1179,11 @@ function billLinesTable(b) {
 }
 
 // ---------- รายงาน ----------
-function loadSummary() { return api('getSummary').then(function (s) { S.sum = s; if (S.tab === 'report') render(); }).catch(function (e) { toast(errMsg(e), 'bad'); }); }
+function loadSummary() {
+  if (S.sumLoading) return S.sumLoading;
+  return (S.sumLoading = api('getSummary').then(function (s) { S.sum = s; S.sumLoading = null; if (S.tab === 'report' || S.tab === 'dash') render(); })).catch(function (e) { S.sumLoading = null; toast(errMsg(e), 'bad'); }); }
 function rReport() {
-  if (!S.sum) return '<div class="card loading">กำลังโหลดรายงาน…<\/div>';
+  if (!S.sum) { loadSummary(); return '<div class="card loading">กำลังโหลดรายงาน…<\/div>'; }
   var list = S.sum;
   if (!list.length) return '<div class="card empty">ยังไม่มีบิล — รายงานจะขึ้นหลังออกบิลเดือนแรก<\/div>';
   var last = list.slice(0, 12).reverse(), mx = Math.max.apply(null, last.map(function (m) { return m.billed; }).concat([1]));
@@ -1244,8 +1310,10 @@ function parseBillBook(wb, fileName) {
   });
   return { items: out, warn: warn };
 }
-function importFiles(files) {
-  if (!files || !files.length) return;
+function importFiles(fileList) {
+  // คัดลอกเป็นอาร์เรย์ก่อน — ช่องเลือกไฟล์ถูกล้างทันทีหลังเลือก (FileList เดิมจะว่าง)
+  var files = [].slice.call(fileList || []);
+  if (!files.length) return;
   toast('กำลังอ่านไฟล์…');
   (window.XLSX ? Promise.resolve() : loadScript(XLSX_LIB)).then(function () {
     return Promise.all([].map.call(files, function (f) {
@@ -1523,6 +1591,7 @@ document.addEventListener('click', function (ev) {
   if (a === 'logout') { gs('logout', [TOKEN]).catch(function () { }); TOKEN = ''; ls('rent.token', null); S.data = null; showLogin('ออกจากระบบแล้ว'); return; }
   if (!S.data) return;
   if (a === 'close') closeModal();
+  else if (a === 'dRange') { S.dRange = t.dataset.v; ls('rent.drange', S.dRange); render(); }
   else if (a === 'mode') { S.mode = t.dataset.v; ls('rent.mode', S.mode); render(); }
   else if (a === 'filter') { S.filter = t.dataset.v; render(); }
   else if (a === 'payFilter') { S.payFilter = t.dataset.v; render(); }
@@ -1627,7 +1696,8 @@ document.addEventListener('change', function (ev) {
   if (id === 'scFile' || id === 'scFile2') { scanPhoto(ev.target.files && ev.target.files[0]); return; }
   if (id === 'impFile') { importFiles(ev.target.files); ev.target.value = ''; return; }
   var m = /^roll-(elec|water)$/.exec(id);
-  if (m && D) { D[m[1] + 'Roll'] = ev.target.checked; updInfo(m[1]); }
+  if (m && D) { D[m[1] + 'Roll'] = ev.target.checked; D[m[1] + 'RollSet'] = true; updInfo(m[1]); }
+  if (id === 'd-from' || id === 'd-to') { if (id === 'd-from') S.dFrom = ev.target.value; else S.dTo = ev.target.value; ls('rent.dfrom', S.dFrom || ''); ls('rent.dto', S.dTo || ''); render(); return; }
   if (id === 'pd-month') { loadPD(ev.target.value); return; }
   if (id === 'pd-layout') { PD.layout = ev.target.value; ls('rent.layout2', PD.layout); updPD(); return; }
   if (ev.target.classList && ev.target.classList.contains('pr-one')) updPD();
