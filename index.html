@@ -195,6 +195,7 @@ input.big::placeholder{font-size:16px;font-weight:500;letter-spacing:0}
 .mbtns{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
 .check{display:flex;gap:8px;align-items:center;padding:8px 2px;border-bottom:1px solid var(--line2)}
 .check input{width:20px;height:20px;min-height:0;flex:none}
+.pdlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));column-gap:16px}
 .radios{display:flex;gap:6px;flex-wrap:wrap}
 .radios label{border:1.5px solid var(--line);border-radius:999px;padding:5px 12px;cursor:pointer;display:flex;gap:6px;align-items:center}
 .radios input{width:auto;min-height:0}
@@ -982,7 +983,7 @@ function rBills() {
     '<div class="kpi acc"><div class="l">' + ic('money') + 'ยอดรวมทั้งเดือน<\/div><div class="v">' + baht(sum) + '<\/div><\/div><\/div>';
   h += '<div class="card"><div class="row">' +
     '<button class="btn primary" data-act="issue"' + (need.length && !saving ? '' : ' disabled') + '>' + ic('bill') + 'ออกบิล ' + need.length + ' ห้อง<\/button>' +
-    '<button class="btn" data-act="printDlg" data-kind="invoice"' + (issued.length ? '' : ' disabled') + '>🖨 พิมพ์ใบแจ้งหนี้<\/button><\/div>' +
+    '<button class="btn" data-act="printDlg" data-kind="invoice">🖨 พิมพ์ใบแจ้งหนี้<\/button><\/div>' +
     '<div class="muted" style="font-size:13px;margin-top:8px">' + (saving ? 'รอบันทึกมิเตอร์ให้เสร็จก่อน… ' : '') + 'ออกบิลซ้ำได้จนกว่าจะรับเงิน — ห้องที่ข้อมูลเปลี่ยนจะออกบิลใหม่ให้ · ค่าปรับ/ส่วนลด กด "± รายการ"<\/div><\/div>';
   var errs = [], warns = [];
   rows.forEach(function (r) {
@@ -1070,7 +1071,7 @@ function rPay() {
   if (!bills.length) h += '<div class="card">ยังไม่ได้ออกบิลเดือนนี้ — ไปที่ <button class="link" data-tab="bills">ใบแจ้งหนี้<\/button><\/div>';
   h += '<div class="row" style="margin-bottom:10px"><div class="fchips grow">' + [['all', 'ทั้งหมด', rows.length], ['unpaid', 'ยังไม่ชำระ', rows.filter(isUnpaid).length], ['paid', 'ชำระแล้ว', rows.filter(isPaid).length]].map(function (c) {
     return '<button data-act="payFilter" data-v="' + c[0] + '" class="' + (S.payFilter === c[0] ? 'on' : '') + '">' + c[1] + '<b>' + c[2] + '<\/b><\/button>';
-  }).join('') + '<\/div><button class="btn sm" data-act="printDlg" data-kind="receipt"' + (paid ? '' : ' disabled') + '>🖨 ใบเสร็จ<\/button><\/div>';
+  }).join('') + '<\/div><button class="btn sm" data-act="printDlg" data-kind="receipt">🖨 ใบเสร็จ<\/button><\/div>';
   h += board(rows.filter(function (r) { return S.payFilter === 'unpaid' ? isUnpaid(r) : (S.payFilter === 'paid' ? isPaid(r) : true); }), payCard);
   var other = (S.data.unpaid || []).filter(function (b) { return b.month !== S.month; });
   if (other.length) {
@@ -1330,7 +1331,7 @@ function read6(n, after) {
   }
   return out;
 }
-function billHtml(b, kind) {
+function billHtml(b, kind, copy) {
   var s = S.data.settings, rec = kind === 'receipt';
   var rows = billLines(b).map(function (l, i) {
     var meter = l.prev !== undefined;
@@ -1343,8 +1344,8 @@ function billHtml(b, kind) {
     '<div class="pay"><div>' + esc(s.payNote) + '<\/div><div><b>' + esc(s.footer) + '<\/b><\/div><div class="ft">ครบกำหนดชำระ ' + esc(dateTh(b.dueDate, true)) + ' · หน่วยไฟ/น้ำปัดเศษขึ้นเป็นหน่วยเต็ม<\/div><\/div>' +
     '<div class="qr"><img src="' + PAYQR + '" alt=""><\/div>';
   return '<section class="bill"><div class="bh"><img class="lg" src="' + LOGO + '" alt=""><div class="hd"><div class="dorm">' + esc(s.dormName) + '<\/div><div class="addr">' + esc(s.address) + (s.phone ? '  โทร ' + esc(s.phone) : '') + '<\/div><\/div>' +
-    '<div class="ttl"><div class="t1">' + (rec ? 'ใบเสร็จรับเงิน' : 'ใบแจ้งหนี้') + '<\/div><div>ห้องเลขที่ <b class="rm">' + esc(b.room) + '<\/b><\/div><\/div><\/div>' +
-    '<div class="meta"><div>เดือน <b>' + monthLabel(b.month) + '<\/b><\/div><div>ผู้เช่า <b>' + esc(b.tenant || '-') + '<\/b><\/div><div>เลขที่ ' + esc(b.no) + '<\/div><div>วันที่ออก ' + esc(dateTh(String(b.issuedAt || '').slice(0, 10))) + '<\/div><\/div>' +
+    '<div class="ttl">' + (copy ? '<div class="cp' + (copy === 'สำเนา' ? ' cp2' : '') + '">' + copy + '<\/div>' : '') + '<div class="t1">' + (rec ? 'ใบเสร็จรับเงิน' : 'ใบแจ้งหนี้') + '<\/div><div>ห้องเลขที่ <b class="rm">' + esc(b.room) + '<\/b><\/div><\/div><\/div>' +
+    '<div class="meta"><div>เดือน <b>' + monthLabel(b.month) + '<\/b><\/div><div>ผู้เช่า <b>' + esc(b.tenant || '-') + '<\/b><\/div><div>เลขที่ ' + esc(b.no) + '<\/div>' + (/^\d{4}-\d{2}-\d{2}/.test(b.issuedAt || '') ? '<div>วันที่ออก ' + esc(dateTh(b.issuedAt.slice(0, 10))) + '<\/div>' : '') + '<\/div>' +
     '<table class="it"><thead><tr><th>ลำดับที่<\/th><th class="d">รายการ<\/th><th>จดครั้งแรก<\/th><th>จดครั้งหลัง<\/th><th>หน่วย<\/th><th>ราคาต่อหน่วย<\/th><th class="a">จำนวนเงิน<\/th><\/tr><\/thead><tbody>' + rows + '<\/tbody>' +
     '<tfoot><tr><td colspan="6" class="d">รวมทั้งสิ้น <span class="w">(' + esc(bahtText(b.total)) + ')<\/span><\/td><td class="a">' + money(b.total) + '<\/td><\/tr><\/tfoot><\/table>' +
     '<div class="bf">' + foot + '<\/div><\/section>';
@@ -1357,7 +1358,7 @@ var PRINT_CSS =
   '.half{height:148.5mm;padding:8mm 11mm 6mm;position:relative}' +
   '.half+.half{border-top:1px dashed #999}' +
   '.half+.half:before{content:"✂";position:absolute;top:-9px;left:6mm;font-size:12px;color:#777;background:#fff}' +
-  'body.a5 .page{width:210mm;height:148.5mm}body.a5 .half+.half{display:none}' +
+  '.cp{display:inline-block;border:1.6px solid #7b3f22;color:#7b3f22;border-radius:2mm;padding:0 3mm;font-size:10pt;font-weight:700;line-height:1.5;margin-bottom:1mm}.cp2{border-color:#777;color:#555}' +
   '.bill{height:100%;display:flex;flex-direction:column}' +
   '.bh{display:flex;align-items:center;gap:4mm;border-bottom:2px solid #7b3f22;padding-bottom:2mm}' +
   '.lg{width:19mm;height:19mm;border-radius:3mm;object-fit:cover}.hd{flex:1}' +
@@ -1372,19 +1373,26 @@ var PRINT_CSS =
   '.bf{display:flex;gap:4mm;align-items:flex-end;margin-top:auto;padding-top:2mm}' +
   '.pay{flex:1;font-size:10pt;line-height:1.45}.ft{color:#555;font-size:9pt;margin-top:1mm}' +
   '.qr img{height:34mm;display:block}' +
-  '.bar{position:sticky;top:0;background:#2a211b;color:#fff;padding:10px 16px;display:flex;gap:12px;align-items:center;font-family:sans-serif;z-index:2}' +
-  '.bar button{font:inherit;padding:8px 18px;border-radius:8px;border:0;background:#d07a36;color:#fff;font-weight:700;cursor:pointer}' +
+  '.bar{position:sticky;top:0;background:#2a211b;color:#fff;padding:10px 16px;display:flex;gap:12px;align-items:center;font-family:sans-serif;z-index:2;flex-wrap:wrap}' +
+  '.bar button{font:inherit;padding:9px 20px;border-radius:8px;border:0;background:#d07a36;color:#fff;font-weight:700;cursor:pointer;font-size:15px}.bar button.g{background:#5a4a3d}' +
+  '.bar small{display:block;color:#e9ddd0;font-weight:400;font-size:12.5px;margin-top:2px}' +
   '@media print{body{background:#fff}.bar{display:none}.page{margin:0}}';
 function printBills(bills, kind, layout) {
   if (!bills.length) { toast('ไม่มีบิลให้พิมพ์', 'bad'); return; }
   var w = window.open('', '_blank');
-  var parts = bills.map(function (b) { return '<div class="half">' + billHtml(b, kind) + '<\/div>'; });
-  var per = layout === 'a5' ? 1 : 2, pages = '';
-  for (var i = 0; i < parts.length; i += per) pages += '<div class="page">' + parts.slice(i, i + per).join('') + (per === 2 && !parts[i + 1] ? '<div class="half"><\/div>' : '') + '<\/div>';
+  var pages = '', copy = layout !== 'two';
+  if (copy) {
+    // A4 1 แผ่นต่อห้อง: ครึ่งบน = ต้นฉบับ, ครึ่งล่าง = สำเนา
+    bills.forEach(function (b) { pages += '<div class="page"><div class="half">' + billHtml(b, kind, 'ต้นฉบับ') + '<\/div><div class="half">' + billHtml(b, kind, 'สำเนา') + '<\/div><\/div>'; });
+  } else {
+    for (var i = 0; i < bills.length; i += 2) pages += '<div class="page"><div class="half">' + billHtml(bills[i], kind) + '<\/div><div class="half">' + (bills[i + 1] ? billHtml(bills[i + 1], kind) : '') + '<\/div><\/div>';
+  }
+  var sheets = copy ? bills.length : Math.ceil(bills.length / 2);
   var title = (kind === 'receipt' ? 'ใบเสร็จ ' : 'ใบแจ้งหนี้ ') + monthLabel(bills[0].month);
-  var css = PRINT_CSS + (layout === 'a5' ? '@page{size:A5 landscape;margin:0}' : '');
-  var doc = '<!DOCTYPE html><html lang="th"><head><meta charset="utf-8"><title>' + esc(title) + '<\/title><link rel="stylesheet" href="' + FONT_CSS + '"><style>' + css + '<\/style><\/head>' +
-    '<body class="' + (layout === 'a5' ? 'a5' : '') + '"><div class="bar"><b style="flex:1">' + esc(title) + ' · ' + bills.length + ' ใบ (' + (layout === 'a5' ? 'A5 ใบละแผ่น' : '2 ใบต่อ A4') + ')<\/b><button onclick="window.print()">🖨 พิมพ์<\/button><\/div>' + pages + '<\/body><\/html>';
+  var doc = '<!DOCTYPE html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>' + esc(title) + '<\/title><link rel="stylesheet" href="' + FONT_CSS + '"><style>' + PRINT_CSS + '<\/style><\/head>' +
+    '<body><div class="bar"><div style="flex:1;min-width:220px"><b>' + esc(title) + ' · ' + bills.length + ' ห้อง · กระดาษ A4 ' + sheets + ' แผ่น' + (copy ? ' (ต้นฉบับ + สำเนา)' : ' (2 ห้องต่อแผ่น)') + '<\/b>' +
+    '<small>ในหน้าต่างพิมพ์: เลือกเครื่องพิมพ์ที่ต่อกับเครื่องนี้ · ขนาดกระดาษ A4 · แนวตั้ง · ระยะขอบ "ไม่มี" · สเกล 100% · เปิด "กราฟิกพื้นหลัง"<\/small><\/div>' +
+    '<button onclick="window.print()">🖨 พิมพ์<\/button><button class="g" onclick="window.close()">ปิด<\/button><\/div>' + pages + '<\/body><\/html>';
   var target = w;
   if (!target || target.closed) {
     var fr = document.getElementById('printFrame');
@@ -1394,21 +1402,62 @@ function printBills(bills, kind, layout) {
   target.document.open(); target.document.write(doc); target.document.close();
   var gop = function () { try { target.focus(); target.print(); } catch (e) { } };
   setTimeout(function () {
-    if (target.document.fonts && target.document.fonts.ready) target.document.fonts.ready.then(function () { setTimeout(gop, 200); });
+    if (target.document.fonts && target.document.fonts.ready) target.document.fonts.ready.then(function () { setTimeout(gop, 300); });
     else gop();
-  }, 400);
+  }, 500);
 }
+// หน้าต่างเลือกพิมพ์: เลือกเดือน + ติ๊กห้อง
+var PD = null;
 function openPrintDlg(kind) {
-  var list = kind === 'receipt' ? billsOfMonth().filter(function (b) { return b.paidAmt; }) : billsOfMonth().filter(function (b) { return b.status !== ST.CARRIED; });
-  if (!list.length) { toast(kind === 'receipt' ? 'ยังไม่มีบิลที่รับเงิน' : 'ยังไม่ได้ออกบิล', 'bad'); return; }
-  var lay = ls('rent.layout') || 'a4';
-  openModal('<div class="mh"><div><h3>' + (kind === 'receipt' ? 'พิมพ์ใบเสร็จ' : 'พิมพ์ใบแจ้งหนี้') + '<\/h3><div class="muted">' + monthLabel(S.month) + '<\/div><\/div><button class="x" data-act="close">✕<\/button><\/div>' +
-    '<div class="radios" style="margin:6px 0 10px"><label><input type="radio" name="lay" value="a4"' + (lay === 'a4' ? ' checked' : '') + '> 2 ใบต่อ A4 (ตัดครึ่ง)<\/label><label><input type="radio" name="lay" value="a5"' + (lay === 'a5' ? ' checked' : '') + '> กระดาษ A5 ใบละแผ่น<\/label><\/div>' +
-    '<label class="check" style="font-weight:600"><input type="checkbox" id="pr-all" checked> เลือกทั้งหมด (' + list.length + ')<\/label>' +
-    list.map(function (b) {
-      return '<label class="check"><input type="checkbox" class="pr-one" value="' + esc(b.no) + '" checked><span class="grow">ห้อง <b>' + esc(b.room) + '<\/b> ' + esc(b.tenant) + '<\/span><span>' + money(b.total) + '<\/span> ' + billPayTag(b) + '<\/label>';
-    }).join('') +
-    '<div class="mbtns"><button class="btn primary grow" data-act="doPrint" data-kind="' + kind + '">🖨 พิมพ์<\/button><\/div>');
+  PD = { kind: kind, month: S.month, cache: {}, bills: [], loading: false, layout: ls('rent.layout2') || 'copy' };
+  loadPD(S.month);
+}
+function pdMonths() {
+  var list = [], m = S.month > todayStr().slice(0, 7) ? S.month : todayStr().slice(0, 7);
+  for (var i = 0; i < 18; i++) { list.push(m); m = addMonth(m, -1); }
+  if (list.indexOf(PD.month) < 0) list.push(PD.month);
+  return list;
+}
+function loadPD(m) {
+  PD.month = m;
+  var done = function (rows) {
+    PD.cache[m] = rows;
+    PD.bills = rows.filter(function (r) { return r.bill; }).map(function (r) { return r.bill; })
+      .filter(function (b) { return PD.kind === 'receipt' ? b.paidAmt : b.status !== ST.CARRIED; });
+    PD.loading = false; renderPD();
+  };
+  if (PD.cache[m]) return done(PD.cache[m]);
+  if (m === S.month && S.data) return done(S.data.rows);
+  PD.loading = true; renderPD();
+  api('getMonth', m).then(function (d) { if (PD && PD.month === m) done(d.rows); }).catch(function (e) { PD.loading = false; toast(errMsg(e), 'bad'); renderPD(); });
+}
+function renderPD() {
+  var k = PD.kind, L = PD.bills, nUn = L.filter(function (b) { return b.status !== ST.PAID; }).length;
+  var h = '<div class="mh"><div><h3>' + (k === 'receipt' ? 'พิมพ์ใบเสร็จ' : 'พิมพ์ใบแจ้งหนี้') + '<\/h3><div class="muted">เลือกเดือน แล้วติ๊กห้องที่จะพิมพ์<\/div><\/div><button class="x" data-act="close">✕<\/button><\/div>' +
+    '<div class="form" style="margin-bottom:8px"><div><label class="lbl">เดือน<\/label><select id="pd-month">' + pdMonths().map(function (m) { return '<option value="' + m + '"' + (m === PD.month ? ' selected' : '') + '>' + monthLabel(m) + '<\/option>'; }).join('') + '<\/select><\/div>' +
+    '<div><label class="lbl">รูปแบบ (กระดาษ A4)<\/label><select id="pd-layout"><option value="copy"' + (PD.layout !== 'two' ? ' selected' : '') + '>1 ห้องต่อแผ่น — บน ต้นฉบับ / ล่าง สำเนา<\/option><option value="two"' + (PD.layout === 'two' ? ' selected' : '') + '>2 ห้องต่อแผ่น (ไม่มีสำเนา)<\/option><\/select><\/div><\/div>';
+  if (PD.loading) h += '<div class="empty">กำลังโหลด…<\/div>';
+  else if (!L.length) h += '<div class="empty">' + (k === 'receipt' ? 'เดือนนี้ยังไม่มีบิลที่รับเงิน' : 'เดือนนี้ยังไม่ได้ออกบิล') + '<\/div>';
+  else {
+    h += '<div class="row" style="margin:4px 0 6px"><div class="fchips grow"><button data-act="pdSel" data-v="all">เลือกทั้งหมด<\/button><button data-act="pdSel" data-v="none">ไม่เลือก<\/button>' +
+      (k === 'invoice' ? '<button data-act="pdSel" data-v="unpaid">เฉพาะยังไม่ชำระ (' + nUn + ')<\/button><button data-act="pdSel" data-v="paid">เฉพาะชำระแล้ว (' + (L.length - nUn) + ')<\/button>' : '') + '<\/div><\/div>' +
+      '<div class="pdlist">' + L.map(function (b) {
+        return '<label class="check"><input type="checkbox" class="pr-one" value="' + esc(b.no) + '" data-st="' + (b.status === ST.PAID ? 'paid' : 'unpaid') + '" checked><span class="grow">ห้อง <b>' + esc(b.room) + '<\/b> <span class="muted">' + esc(b.tenant || '') + '<\/span><\/span><span class="num">' + money(b.total) + '<\/span> ' + billPayTag(b) + '<\/label>';
+      }).join('') + '<\/div>';
+  }
+  h += '<div class="mbtns"><button class="btn primary grow" data-act="doPrint" id="pdGo"' + (L.length ? '' : ' disabled') + '>🖨 พิมพ์<\/button><\/div>' +
+    '<p class="muted" style="font-size:12.5px;margin:8px 0 0">กดพิมพ์แล้วจะเปิดหน้าตัวอย่าง + หน้าต่างพิมพ์ของเครื่อง เลือกเครื่องพิมพ์ที่ต่อกับคอมพิวเตอร์/มือถือเครื่องนี้ได้ (USB, LAN, Wi‑Fi)<\/p>';
+  var mb = document.getElementById('modalBox'), keep = mb.scrollTop, open = !document.getElementById('modal').classList.contains('hidden');
+  openModal(h, 'wide');
+  if (open) mb.scrollTop = keep;
+  updPD();
+}
+function updPD() {
+  var n = document.querySelectorAll('.pr-one:checked').length, btn = document.getElementById('pdGo');
+  if (!btn) return;
+  var sheets = PD.layout === 'two' ? Math.ceil(n / 2) : n;
+  btn.disabled = !n;
+  btn.textContent = n ? '🖨 พิมพ์ ' + n + ' ห้อง · A4 ' + sheets + ' แผ่น' : 'เลือกห้องที่จะพิมพ์';
 }
 
 // ---------- ค้นหา ----------
@@ -1508,11 +1557,15 @@ document.addEventListener('click', function (ev) {
   else if (a === 'viewBill') { var vr = rowOf(room); if (vr && vr.bill) openPay(vr.bill.no); }
   else if (a === 'printDlg') openPrintDlg(t.dataset.kind);
   else if (a === 'doPrint') {
-    var lay = (document.querySelector('input[name=lay]:checked') || {}).value || 'a4'; ls('rent.layout', lay);
     var nos = [].slice.call(document.querySelectorAll('.pr-one:checked')).map(function (x) { return x.value; });
-    printBills(nos.map(findBill).filter(Boolean), t.dataset.kind, lay);
+    printBills(PD.bills.filter(function (b) { return nos.indexOf(b.no) >= 0; }), PD.kind, PD.layout);
   }
-  else if (a === 'printOne') printBills([findBill(no)], t.dataset.kind, ls('rent.layout') || 'a4');
+  else if (a === 'pdSel') {
+    var v = t.dataset.v;
+    [].forEach.call(document.querySelectorAll('.pr-one'), function (x) { x.checked = v === 'all' || x.dataset.st === v; });
+    updPD();
+  }
+  else if (a === 'printOne') printBills([findBill(no)], t.dataset.kind, ls('rent.layout2') || 'copy');
   else if (a === 'payDlg') openPay(no);
   else if (a === 'savePay') busyBtn(t, function () {
     return api('setPaid', no, { paidAmt: val('pay-amt'), paidAt: val('pay-date'), payMethod: val('pay-method') }, S.month).then(function (d) {
@@ -1575,7 +1628,9 @@ document.addEventListener('change', function (ev) {
   if (id === 'impFile') { importFiles(ev.target.files); ev.target.value = ''; return; }
   var m = /^roll-(elec|water)$/.exec(id);
   if (m && D) { D[m[1] + 'Roll'] = ev.target.checked; updInfo(m[1]); }
-  if (id === 'pr-all') [].forEach.call(document.querySelectorAll('.pr-one'), function (x) { x.checked = ev.target.checked; });
+  if (id === 'pd-month') { loadPD(ev.target.value); return; }
+  if (id === 'pd-layout') { PD.layout = ev.target.value; ls('rent.layout2', PD.layout); updPD(); return; }
+  if (ev.target.classList && ev.target.classList.contains('pr-one')) updPD();
 });
 document.addEventListener('keydown', function (ev) {
   if (ev.key === 'Escape') { if (SC) stopScanner(); else if (MODAL_KIND !== 'meter') closeModal(); return; }
