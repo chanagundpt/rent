@@ -460,7 +460,7 @@ function setData(d) {
   if (!d || d.month !== S.month) return;
   S.q.forEach(function (p) { if (p.month === d.month) { var r = d.rows.filter(function (x) { return x.room === p.room; })[0]; if (r) r._saving = true; } });
   S.data = d;
-  S.sum = null; // สรุปรายเดือนอาจเปลี่ยน — โหลดใหม่เมื่อต้องใช้
+  S.sum = null; DC = {}; // สรุปอาจเปลี่ยน — โหลดใหม่เมื่อต้องใช้
 }
 function rowOf(room) { return S.data ? S.data.rows.filter(function (r) { return r.room === room; })[0] : null; }
 function hasF(r, f) { return !!(r.reading && String(r.reading[f] == null ? '' : r.reading[f]) !== ''); }
@@ -571,37 +571,95 @@ function rDash() {
 }
 
 // ช่วงเวลาของหน้าภาพรวม: month = เดือนที่เลือกด้านบน, อื่นๆ = รวมจากสรุปรายเดือน (getSummary)
-var RANGES = [['month', 'เดือนนี้'], ['3m', '3 เดือน'], ['6m', '6 เดือน'], ['year', 'ทั้งปี'], ['all', 'ทั้งหมด'], ['custom', 'กำหนดเอง']];
+var RANGES = [['month', 'เดือนนี้'], ['3m', '3 เดือน'], ['6m', '6 เดือน'], ['year', 'ทั้งปี'], ['all', 'ทั้งหมด'], ['custom', 'เลือกวันที่']];
 S.dRange = ls('rent.drange') || 'month';
-S.dFrom = ls('rent.dfrom') || ''; S.dTo = ls('rent.dto') || '';
+S.dFrom = ls('rent.dfromD') || ''; S.dTo = ls('rent.dtoD') || ''; // yyyy-mm-dd
+var DC = {}; // บิลรายเดือนที่โหลดไว้สำหรับช่วงวันที่
 function dashSpan() {
   var m = S.month, r = S.dRange, list = (S.sum || []).map(function (x) { return x.month; }).sort();
   if (r === '3m') return [addMonth(m, -2), m];
   if (r === '6m') return [addMonth(m, -5), m];
   if (r === 'year') return [m.slice(0, 4) + '-01', m.slice(0, 4) + '-12'];
   if (r === 'all') return [list[0] || m, list[list.length - 1] || m];
-  if (r === 'custom') { var a = S.dFrom || addMonth(m, -2), b = S.dTo || m; return a <= b ? [a, b] : [b, a]; }
+  if (r === 'custom') { var ds = dateSpan(); return [ds[0].slice(0, 7), ds[1].slice(0, 7)]; }
   return [m, m];
+}
+function dateSpan() {
+  var t = todayStr(), a = S.dFrom || (addMonth(S.month, -2) + '-01'), b = S.dTo || t;
+  return a <= b ? [a, b] : [b, a];
+}
+function monthsBetween(a, b) { var out = [], m = a.slice(0, 7); while (m <= b.slice(0, 7) && out.length < 36) { out.push(m); m = addMonth(m, 1); } return out; }
+// ช่วงวันที่: ยอดบิล = บิลของเดือนที่ช่วงวันที่ครอบ, รายรับ = ยอดที่ชำระโดยวันที่ชำระอยู่ในช่วง (บิลนำเข้าที่ไม่มีวันที่ชำระ นับตามเดือนของบิล)
+function dateKpis(rows, occ, due) {
+  var ds = dateSpan(), ms = monthsBetween(ds[0], ds[1]);
+  var need = ms.filter(function (m) { return !DC[m]; });
+  if (need.length) {
+    if (!S.dcLoading) {
+      S.dcLoading = Promise.all(need.map(function (m) { return api('getMonth', m).then(function (x) { DC[m] = x.rows.filter(function (r) { return r.bill; }).map(function (r) { return r.bill; }); }); }))
+        .then(function () { S.dcLoading = null; if (S.tab === 'dash') render(); })
+        .catch(function (e) { S.dcLoading = null; toast(errMsg(e), 'bad', 6000); });
+    }
+    return '<div class="card loading">กำลังรวมข้อมูล ' + ms.length + ' เดือน…<\/div>';
+  }
+  var t = { billed: 0, paid: 0, outstanding: 0, rent: 0, elec: 0, water: 0, other: 0, elecUnits: 0, waterUnits: 0, bills: 0, nPaid: 0, nUn: 0 }, byM = {};
+  ms.forEach(function (m) {
+    var bm = byM[m] = { month: m, billed: 0, paid: 0 };
+    DC[m].forEach(function (b) {
+      var billed = (b.total || 0) - (b.arrears || 0);
+      t.billed += billed; bm.billed += billed; t.bills++;
+      t.rent += b.rent || 0; t.elec += b.elecAmt || 0; t.water += b.waterAmt || 0; t.other += (b.other || 0) + (b.extrasAmt || 0);
+      t.elecUnits += b.elecUnits || 0; t.waterUnits += b.waterUnits || 0;
+      var inRange = b.paidAt ? (b.paidAt >= ds[0] && b.paidAt <= ds[1]) : true;
+      if (b.paidAmt && inRange) { t.paid += b.paidAmt; bm.paid += b.paidAmt; }
+      if (b.status === ST.PAID) t.nPaid++;
+      if (b.status === ST.UNPAID) { t.nUn++; t.outstanding += (b.total || 0) - (b.paidAmt || 0); }
+    });
+  });
+  if (!t.bills) return '<div class="muted" style="margin:-4px 0 10px;font-size:14px">' + dateTh(ds[0], true) + ' – ' + dateTh(ds[1], true) + '<\/div>' + noBillsCard('ช่วงวันที่นี้ยังไม่มีบิลในระบบ');
+  var days = daysBetween(ds[0], ds[1]) + 1;
+  var h = '<div class="muted" style="margin:-4px 0 10px;font-size:14px">' + dateTh(ds[0], true) + ' – ' + dateTh(ds[1], true) + ' · ' + days + ' วัน · บิลประจำเดือน ' + monthShort(ms[0]) + (ms.length > 1 ? '–' + monthShort(ms[ms.length - 1]) : '') + '<\/div>' +
+    '<div class="kpis">' +
+    '<div class="kpi ok"><div class="l">' + ic('money') + 'รายรับในช่วงวันที่<\/div><div class="v">' + baht(t.paid) + '<\/div><div class="s">นับตามวันที่ชำระ<\/div><\/div>' +
+    '<div class="kpi acc"><div class="l">' + ic('trend') + 'อัตราการเก็บเงิน<\/div><div class="v">' + (t.billed ? Math.min(100, t.paid / t.billed * 100).toFixed(1) : '0') + '%<\/div><div class="s">ยอดบิล ' + baht(t.billed) + ' · ชำระแล้ว ' + t.nPaid + '/' + t.bills + ' บิล<\/div><\/div>' +
+    '<div class="kpi pri"><div class="l">' + ic('home') + 'อัตราการเข้าพัก (ตอนนี้)<\/div><div class="v">' + (rows.length ? (occ.length / rows.length * 100).toFixed(1) : '0') + '%<\/div><div class="s">มีผู้เช่า ' + occ.length + ' / ' + rows.length + ' ห้อง<\/div><\/div>' +
+    '<div class="kpi bad"><div class="l">' + ic('alert') + 'ยังค้างชำระ<\/div><div class="v">' + baht(t.outstanding) + '<\/div><div class="s">' + t.nUn + ' บิล · ค้างทั้งหมดตอนนี้ ' + baht(due) + '<\/div><\/div><\/div>' +
+    '<div class="kpis">' +
+    '<div class="kpi"><div class="l">' + ic('rooms') + 'ค่าห้อง<\/div><div class="v">' + baht(t.rent) + '<\/div><\/div>' +
+    '<div class="kpi elec"><div class="l">' + ic('bolt') + 'ค่าไฟ<\/div><div class="v">' + baht(t.elec) + '<\/div><div class="s">' + fmt(t.elecUnits) + ' หน่วย<\/div><\/div>' +
+    '<div class="kpi water"><div class="l">' + ic('drop') + 'ค่าน้ำ<\/div><div class="v">' + baht(t.water) + '<\/div><div class="s">' + fmt(t.waterUnits) + ' หน่วย<\/div><\/div>' +
+    '<div class="kpi"><div class="l">' + ic('bill') + 'ค่าปรับ / อื่นๆ<\/div><div class="v">' + baht(t.other) + '<\/div><\/div><\/div>';
+  var L = ms.map(function (m) { return byM[m]; });
+  if (L.length > 1) {
+    var mx = Math.max.apply(null, L.map(function (m) { return m.billed; }).concat([1]));
+    h += '<div class="card"><h3>รายเดือนในช่วงนี้<\/h3><div class="chart">' + L.map(function (m) {
+      return '<div title="' + monthLabel(m.month) + ' ยอดบิล ' + money(m.billed) + ' รับในช่วง ' + money(m.paid) + '"><span style="display:flex;gap:3px;align-items:flex-end;height:100%;width:100%;justify-content:center"><i style="height:' + (m.billed / mx * 100) + '%"><\/i><i class="paid" style="height:' + (Math.min(m.paid, m.billed * 1.5) / mx * 100) + '%"><\/i><\/span><small>' + monthShort(m.month) + '<\/small><\/div>';
+    }).join('') + '<\/div><\/div>';
+  }
+  return h + '<p class="muted" style="font-size:12.5px;margin:-6px 0 14px">ยอดบิลคิดตามเดือนของบิลที่ช่วงวันที่ครอบ · รายรับนับตามวันที่ชำระ (บิลที่นำเข้าจาก Excel ไม่มีวันที่ชำระ จึงนับตามเดือนของบิล)<\/p>';
+}
+function noBillsCard(msg) {
+  return '<div class="card" style="border:2px dashed var(--acc);box-shadow:none"><h3>' + ic('bill') + esc(msg) + '<\/h3>' +
+    '<p class="muted" style="margin:0 0 10px">นำเข้าบิลย้อนหลังจากไฟล์ Excel (01-26.xlsx … 10-26.xlsx) ที่หน้าตั้งค่า แล้วรายงาน/ช่วงเวลา/พิมพ์ย้อนหลังจะมีข้อมูล<\/p>' +
+    '<button class="btn primary" data-tab="settings">ไปนำเข้าบิลย้อนหลัง ›<\/button><\/div>';
 }
 function rangeBar() {
   var h = '<div class="card" style="padding:12px 16px"><div class="row"><b style="font-size:14px">ช่วงเวลา<\/b><div class="fchips grow">' +
     RANGES.map(function (x) { return '<button data-act="dRange" data-v="' + x[0] + '" class="' + (S.dRange === x[0] ? 'on' : '') + '">' + x[1] + '<\/button>'; }).join('') + '<\/div>';
   if (S.dRange === 'custom') {
-    var sp = dashSpan(), opts = function (sel) {
-      var out = '', m = todayStr().slice(0, 7);
-      for (var i = 0; i < 36; i++) { out += '<option value="' + m + '"' + (m === sel ? ' selected' : '') + '>' + monthLabel(m) + '<\/option>'; m = addMonth(m, -1); }
-      return out;
-    };
-    h += '<div class="row" style="width:100%"><span class="muted">จาก<\/span><select id="d-from" style="flex:1;min-width:140px">' + opts(sp[0]) + '<\/select><span class="muted">ถึง<\/span><select id="d-to" style="flex:1;min-width:140px">' + opts(sp[1]) + '<\/select><\/div>';
+    var ds = dateSpan();
+    h += '<div class="row" style="width:100%"><span class="muted">วันที่<\/span><input type="date" id="d-from" value="' + ds[0] + '" style="flex:1;min-width:150px">' +
+      '<span class="muted">ถึงวันที่<\/span><input type="date" id="d-to" value="' + ds[1] + '" style="flex:1;min-width:150px"><\/div>';
   }
   return h + '<\/div><\/div>';
 }
 function rangeKpis(rows, occ, due, d) {
+  if (S.dRange === 'custom') return dateKpis(rows, occ, due);
   if (!S.sum) { loadSummary(); return '<div class="card loading">กำลังรวมข้อมูลช่วงเวลา…<\/div>'; }
   var sp = dashSpan(), L = S.sum.filter(function (m) { return m.month >= sp[0] && m.month <= sp[1]; }).sort(function (a, b) { return a.month < b.month ? -1 : 1; });
   var t = { billed: 0, paid: 0, outstanding: 0, rent: 0, elec: 0, water: 0, other: 0, elecUnits: 0, waterUnits: 0, bills: 0 };
   L.forEach(function (m) { Object.keys(t).forEach(function (k) { t[k] += m[k] || 0; }); });
   var n = L.length || 1, label = monthLabel(sp[0]) + (sp[0] !== sp[1] ? ' – ' + monthLabel(sp[1]) : '');
+  if (!S.sum.length) return noBillsCard('ยังไม่มีบิลในระบบเลย ตัวเลขช่วงเวลาจึงเป็น 0');
   var h = '<div class="muted" style="margin:-4px 0 10px;font-size:14px">' + label + ' · มีบิล ' + L.length + ' เดือน<\/div>' +
     '<div class="kpis">' +
     '<div class="kpi ok"><div class="l">' + ic('money') + 'รายรับ (ชำระแล้ว)<\/div><div class="v">' + baht(t.paid) + '<\/div><div class="s">เฉลี่ย ' + baht(t.paid / n) + ' / เดือน<\/div><\/div>' +
@@ -1531,7 +1589,8 @@ function renderPD() {
     '<div class="form" style="margin-bottom:8px"><div><label class="lbl">เดือน<\/label><select id="pd-month">' + pdMonths().map(function (m) { return '<option value="' + m + '"' + (m === PD.month ? ' selected' : '') + '>' + monthLabel(m) + '<\/option>'; }).join('') + '<\/select><\/div>' +
     '<div><label class="lbl">รูปแบบ (กระดาษ A4)<\/label><select id="pd-layout"><option value="copy"' + (PD.layout !== 'two' ? ' selected' : '') + '>1 ห้องต่อแผ่น — บน ต้นฉบับ / ล่าง สำเนา<\/option><option value="two"' + (PD.layout === 'two' ? ' selected' : '') + '>2 ห้องต่อแผ่น (ไม่มีสำเนา)<\/option><\/select><\/div><\/div>';
   if (PD.loading) h += '<div class="empty">กำลังโหลด…<\/div>';
-  else if (!L.length) h += '<div class="empty">' + (k === 'receipt' ? 'เดือนนี้ยังไม่มีบิลที่รับเงิน' : 'เดือนนี้ยังไม่ได้ออกบิล') + '<\/div>';
+  else if (!L.length) h += '<div class="empty">' + monthLabel(PD.month) + (k === 'receipt' ? ' ยังไม่มีบิลที่รับเงิน' : ' ยังไม่มีบิลในระบบ') + ' — ยังไม่มีห้องให้ติ๊ก<br>' +
+    'เดือนปัจจุบัน: จดมิเตอร์แล้วกด "ออกบิล" ก่อน · เดือนย้อนหลัง: นำเข้าจากไฟล์ Excel ที่หน้าตั้งค่า<br><button class="btn sm" style="margin-top:10px" data-tab="settings">ไปหน้าตั้งค่า (นำเข้า) ›<\/button><\/div>';
   else {
     h += '<div class="row" style="margin:4px 0 6px"><div class="fchips grow"><button data-act="pdSel" data-v="all">เลือกทั้งหมด<\/button><button data-act="pdSel" data-v="none">ไม่เลือก<\/button>' +
       (k === 'invoice' ? '<button data-act="pdSel" data-v="unpaid">เฉพาะยังไม่ชำระ (' + nUn + ')<\/button><button data-act="pdSel" data-v="paid">เฉพาะชำระแล้ว (' + (L.length - nUn) + ')<\/button>' : '') + '<\/div><\/div>' +
@@ -1724,7 +1783,7 @@ document.addEventListener('change', function (ev) {
   if (id === 'impFile') { importFiles(ev.target.files); ev.target.value = ''; return; }
   var m = /^roll-(elec|water)$/.exec(id);
   if (m && D) { D[m[1] + 'Roll'] = ev.target.checked; D[m[1] + 'RollSet'] = true; updInfo(m[1]); }
-  if (id === 'd-from' || id === 'd-to') { if (id === 'd-from') S.dFrom = ev.target.value; else S.dTo = ev.target.value; ls('rent.dfrom', S.dFrom || ''); ls('rent.dto', S.dTo || ''); render(); return; }
+  if (id === 'd-from' || id === 'd-to') { if (!ev.target.value) return; if (id === 'd-from') S.dFrom = ev.target.value; else S.dTo = ev.target.value; ls('rent.dfromD', S.dFrom || ''); ls('rent.dtoD', S.dTo || ''); render(); return; }
   if (id === 'pd-month') { loadPD(ev.target.value); return; }
   if (id === 'pd-layout') { PD.layout = ev.target.value; ls('rent.layout2', PD.layout); updPD(); return; }
   if (ev.target.classList && ev.target.classList.contains('pr-one')) updPD();
