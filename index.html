@@ -68,7 +68,7 @@ svg.i{width:20px;height:20px;flex:none;stroke:currentColor;fill:none;stroke-widt
 .month button{border:0;background:none;width:34px;height:36px;border-radius:9px;font-size:18px;cursor:pointer;color:var(--ink2)}
 .month button:hover{background:var(--line2)}
 .month span{min-width:128px;text-align:center;font-weight:600}
-main{padding:26px 28px 110px;max-width:1280px}
+main{padding:26px 28px 110px}
 .ph{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:18px}
 .ph h1{margin:0;font-size:28px;font-weight:700;line-height:1.2}
 .ph p{margin:4px 0 0;color:var(--mut)}
@@ -1176,7 +1176,9 @@ function rlCount() { var e = document.getElementById('rl-count'); if (e) e.textC
 // ---------- ตั้งค่า ----------
 function rSettings() {
   var s = S.data.settings, def = S.data.settingsDef;
-  return '<div class="card"><h3>ข้อมูลหอพักและอัตราค่าบริการ<\/h3><div class="form">' + def.map(function (d) {
+  return '<div class="card"><h3>นำเข้าบิลย้อนหลังจาก Excel<\/h3><div class="muted" style="font-size:14px;margin-bottom:10px">เลือกไฟล์ใบแจ้งหนี้เดิม (แบบไฟล์ 10-26.xlsx) ได้หลายไฟล์พร้อมกัน — ระบบอ่านเลขมิเตอร์และยอดเงินตามไฟล์ แล้วให้ตรวจก่อนบันทึก<\/div>' +
+    '<label class="btn primary">' + ic('bill') + 'เลือกไฟล์ Excel<input type="file" id="impFile" accept=".xlsx,.xls" multiple hidden><\/label><\/div>' +
+    '<div class="card"><h3>ข้อมูลหอพักและอัตราค่าบริการ<\/h3><div class="form">' + def.map(function (d) {
     var long = d[0] === 'payNote' || d[0] === 'address' || d[0] === 'footer';
     return '<div' + (long ? ' style="grid-column:1/-1"' : '') + '><label class="lbl">' + esc(d[1]) + '<\/label><input id="st-' + d[0] + '" value="' + esc(s[d[0]]) + '"><\/div>';
   }).join('') + '<\/div><div class="mbtns"><button class="btn primary" data-act="saveSettings">บันทึกการตั้งค่า<\/button><\/div>' +
@@ -1185,6 +1187,103 @@ function rSettings() {
     '<div class="mbtns"><button class="btn" data-act="changePw">เปลี่ยนรหัสผ่าน<\/button><\/div><p class="muted" style="font-size:13px">เปลี่ยนแล้วทุกเครื่องต้องเข้าสู่ระบบใหม่<\/p><\/div>' +
     '<div class="card"><h3>QR ชำระเงินบนบิล<\/h3><div class="row"><img src="' + PAYQR + '" alt="" style="width:120px;border-radius:10px;border:1px solid var(--line)"><div class="grow muted" style="font-size:13px">พิมพ์ที่มุมใบแจ้งหนี้ทุกใบ<br>เวอร์ชัน ' + esc(S.data.version) + '<\/div><\/div>' +
     '<div class="mbtns"><button class="btn danger" data-act="logout">' + ic('out') + 'ออกจากระบบ<\/button><\/div><\/div><\/div>';
+}
+
+// ---------- นำเข้าบิลย้อนหลังจาก Excel (แบบใบแจ้งหนี้เดิม: บล็อก "ห้องเลขที่ X" ต่อห้อง) ----------
+var XLSX_LIB = CDN + 'cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+var TH_AB = { 'ม.ค': 1, 'ก.พ': 2, 'มี.ค': 3, 'เม.ย': 4, 'พ.ค': 5, 'มิ.ย': 6, 'ก.ค': 7, 'ส.ค': 8, 'ก.ย': 9, 'ต.ค': 10, 'พ.ย': 11, 'ธ.ค': 12 };
+var IMP = null;
+function thMonth(text) {
+  var t = String(text || '').replace(/\s+/g, ''), mo = 0, i;
+  for (i = 0; i < 12; i++) if (t.indexOf(TH_M[i]) >= 0) mo = i + 1;
+  if (!mo) Object.keys(TH_AB).forEach(function (k) { if (t.indexOf(k) >= 0 && (!mo || k.length > 3)) mo = TH_AB[k]; });
+  var y = /(\d{4}|\d{2})(?!.*\d)/.exec(t);
+  if (!mo || !y) return '';
+  var yr = +y[1]; if (yr < 100) yr += 2500; if (yr > 2400) yr -= 543;
+  return yr + '-' + pad(mo);
+}
+function cellNum(v) { if (v === null || v === undefined || v === '' || v === '-') return null; var n = numv(v); return n; }
+function parseBillBook(wb, fileName) {
+  var out = [], warn = [], fileMonth = '';
+  var fm = /(\d{1,2})[-_.](\d{2})/.exec(fileName || '');
+  if (fm) fileMonth = (2000 + +fm[2]) + '-' + pad(+fm[1]);
+  wb.SheetNames.forEach(function (sn) {
+    var g = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, raw: true, defval: null, blankrows: true });
+    var at = function (r, c) { return g[r] && g[r][c] !== undefined ? g[r][c] : null; };
+    g.forEach(function (row, r) {
+      (row || []).forEach(function (v, c) {
+        var m = /^ห้องเลขที่\s*(.+)$/.exec(String(v == null ? '' : v).trim());
+        if (!m) return;
+        var room = m[1].trim(), month = '', lc = -1, hr = -1;
+        for (var rr = r; rr <= r + 4 && !month; rr++) for (var cc = Math.max(0, c - 9); cc <= c + 1; cc++) { var mv = at(rr, cc); if (mv && /เดือน/.test(String(mv))) { month = thMonth(mv); if (month) break; } }
+        for (rr = r + 1; rr <= r + 6 && lc < 0; rr++) for (cc = c; cc >= Math.max(0, c - 9); cc--) if (String(at(rr, cc) || '').trim() === 'รายการ') { lc = cc; hr = rr; break; }
+        if (lc < 0) { warn.push(sn + ' ห้อง ' + room + ': หาหัวตารางไม่เจอ'); return; }
+        var it = { month: month || fileMonth, room: room, rent: 0, fine: 0, others: [], total: null, sheet: sn };
+        for (rr = hr + 1; rr <= hr + 20; rr++) {
+          var lab = String(at(rr, lc) || '').trim(), lab0 = String(at(rr, lc - 1) || '').trim();
+          if (/รวมทั้งสิ้น/.test(lab) || /รวมทั้งสิ้น/.test(lab0)) {
+            for (cc = lc; cc <= lc + 7; cc++) { var tv = cellNum(at(rr, cc)); if (tv !== null) it.total = tv; }
+            break;
+          }
+          if (!lab) continue;
+          var a = [1, 2, 3, 4, 5].map(function (k) { return cellNum(at(rr, lc + k)); });
+          if (/ค่าห้อง/.test(lab)) it.rent = a[4] || 0;
+          else if (/ค่าปรับ/.test(lab)) it.fine = a[4] || 0;
+          else if (/ค่าไฟ/.test(lab)) { it.elecPrev = a[0]; it.elecNow = a[1]; it.elecUnits = a[2]; it.elecAmt = a[4] || 0; }
+          else if (/ค่าน้ำ/.test(lab)) { it.waterPrev = a[0]; it.waterNow = a[1]; it.waterUnits = a[2]; it.waterAmt = a[4] || 0; }
+          else if (a[4]) it.others.push({ desc: lab, amount: a[4] });
+        }
+        if (!it.month) { warn.push(sn + ' ห้อง ' + room + ': หาเดือนไม่เจอ'); return; }
+        var sum = r2(it.rent + it.fine + (it.elecAmt || 0) + (it.waterAmt || 0) + it.others.reduce(function (s2, o) { return s2 + o.amount; }, 0));
+        if (it.total === null) it.total = sum;
+        it.check = Math.abs(sum - it.total) < 0.01 ? '' : 'ยอดรวมในไฟล์ ' + money(it.total) + ' ≠ รวมรายการ ' + money(sum);
+        out.push(it);
+      });
+    });
+  });
+  return { items: out, warn: warn };
+}
+function importFiles(files) {
+  if (!files || !files.length) return;
+  toast('กำลังอ่านไฟล์…');
+  (window.XLSX ? Promise.resolve() : loadScript(XLSX_LIB)).then(function () {
+    return Promise.all([].map.call(files, function (f) {
+      return f.arrayBuffer().then(function (buf) { return parseBillBook(XLSX.read(buf, { type: 'array' }), f.name); });
+    }));
+  }).then(function (res) {
+    var seen = {}, items = [], warn = [], dup = 0;
+    res.forEach(function (r) {
+      warn = warn.concat(r.warn);
+      r.items.forEach(function (it) { var k = it.month + '|' + it.room; if (seen[k]) { dup++; return; } seen[k] = 1; items.push(it); });
+    });
+    items.sort(function (a, b) { return a.month === b.month ? (a.room < b.room ? -1 : 1) : (a.month < b.month ? -1 : 1); });
+    IMP = items;
+    showImport(warn, dup);
+  }).catch(function (e) { toast('อ่านไฟล์ไม่ได้: ' + errMsg(e), 'bad', 6000); });
+}
+function showImport(warn, dup) {
+  var items = IMP, byM = {};
+  items.forEach(function (it) { (byM[it.month] = byM[it.month] || []).push(it); });
+  var bad = items.filter(function (it) { return it.check; });
+  var known = {}; S.data.rows.forEach(function (r) { known[r.room] = 1; });
+  var newRooms = items.map(function (it) { return it.room; }).filter(function (r, i, a) { return !known[r] && a.indexOf(r) === i; });
+  var h = '<div class="mh"><div><h3>ตรวจก่อนนำเข้า<\/h3><div class="muted">' + items.length + ' บิล · ' + Object.keys(byM).length + ' เดือน' + (dup ? ' · ตัดบล็อกซ้ำ ' + dup : '') + '<\/div><\/div><button class="x" data-act="close">✕<\/button><\/div>';
+  if (!items.length) h += '<div class="empty">ไม่พบใบแจ้งหนี้ในไฟล์ (ต้องมีช่อง "ห้องเลขที่ …" และตาราง รายการ/จดครั้งแรก/จดครั้งหลัง)<\/div>';
+  if (warn.length || bad.length || newRooms.length) h += '<ul class="msgs">' + warn.map(function (w) { return '<li class="w">' + esc(w) + '<\/li>'; }).join('') +
+    bad.map(function (it) { return '<li class="w">' + monthShort(it.month) + ' ห้อง ' + esc(it.room) + ': ' + esc(it.check) + ' (ใช้ยอดในไฟล์)<\/li>'; }).join('') +
+    (newRooms.length ? '<li class="w">ห้องที่ยังไม่มีในระบบ จะเพิ่มให้: ' + esc(newRooms.join(', ')) + '<\/li>' : '') + '<\/ul>';
+  h += Object.keys(byM).map(function (m) {
+    var L = byM[m], tot = L.reduce(function (a, it) { return a + it.total; }, 0);
+    return '<details style="margin:8px 0"><summary style="cursor:pointer;font-weight:600">' + monthLabel(m) + ' · ' + L.length + ' ห้อง · ' + money(tot) + ' บาท<\/summary><div class="scrollx"><table class="t"><thead><tr><th class="l">ห้อง<\/th><th>ค่าห้อง<\/th><th>ไฟ ก่อน→หลัง<\/th><th>ค่าไฟ<\/th><th>น้ำ ก่อน→หลัง<\/th><th>ค่าน้ำ<\/th><th>ปรับ/อื่น<\/th><th>รวม<\/th><\/tr><\/thead><tbody>' +
+      L.map(function (it) {
+        var oth = it.fine + it.others.reduce(function (a, o) { return a + o.amount; }, 0);
+        return '<tr><td class="l"><b>' + esc(it.room) + '<\/b><\/td><td>' + money(it.rent) + '<\/td><td>' + fmt(it.elecPrev) + '→' + fmt(it.elecNow) + '<\/td><td>' + money(it.elecAmt) + '<\/td><td>' + fmt(it.waterPrev) + '→' + fmt(it.waterNow) + '<\/td><td>' + money(it.waterAmt) + '<\/td><td>' + (oth ? money(oth) : '–') + '<\/td><td><b>' + money(it.total) + '<\/b><\/td><\/tr>';
+      }).join('') + '<\/tbody><\/table><\/div><\/details>';
+  }).join('');
+  if (items.length) h += '<label class="check" style="border:0"><input type="checkbox" id="impPaid" checked> ลงทุกบิลเป็น "ชำระแล้ว"<\/label>' +
+    '<p class="muted" style="font-size:13px">ยอดเงินใช้ตามไฟล์ทุกบาท · บิลที่รับเงินในระบบแล้วจะไม่ถูกทับ · เลขมิเตอร์ของเดือนเดียวกันจะถูกแทนด้วยค่าจากไฟล์<\/p>' +
+    '<div class="mbtns"><button class="btn ghost" data-act="close">ยกเลิก<\/button><button class="btn primary grow" data-act="doImport">นำเข้า ' + items.length + ' บิล<\/button><\/div>';
+  openModal(h, 'wide');
 }
 
 // ---------- ใบแจ้งหนี้ (พิมพ์) — แบบเดียวกับใบแจ้งหนี้เดิม ----------
@@ -1448,6 +1547,14 @@ document.addEventListener('click', function (ev) {
     var o = {}; S.data.settingsDef.forEach(function (d) { o[d[0]] = val('st-' + d[0]); });
     return api('saveSettings', o, S.month).then(function (d) { setData(d); render(); toast('บันทึกการตั้งค่าแล้ว', 'ok'); });
   });
+  else if (a === 'doImport') busyBtn(t, function () {
+    var items = (IMP || []).map(function (it) { var o = {}; Object.keys(it).forEach(function (k) { if (k !== 'check' && k !== 'sheet') o[k] = it[k]; }); return o; });
+    return api('importHistory', items, { paid: document.getElementById('impPaid').checked }).then(function (r) {
+      closeModal(); IMP = null; S.sum = null;
+      toast('นำเข้าแล้ว ' + r.bills + ' บิล · มิเตอร์ ' + r.readings + ' รายการ' + (r.roomsAdded.length ? ' · เพิ่มห้อง ' + r.roomsAdded.join(', ') : '') + (r.skipped.length ? ' · ข้าม ' + r.skipped.length : ''), 'ok', 7000);
+      return load();
+    });
+  });
   else if (a === 'changePw') busyBtn(t, function () {
     return api('changePassword', val('pw-old'), val('pw-new')).then(function () {
       TOKEN = ''; ls('rent.token', null); showLogin('เปลี่ยนรหัสผ่านแล้ว — เข้าสู่ระบบด้วยรหัสใหม่');
@@ -1465,6 +1572,7 @@ document.addEventListener('input', function (ev) {
 document.addEventListener('change', function (ev) {
   var id = ev.target.id || '';
   if (id === 'scFile' || id === 'scFile2') { scanPhoto(ev.target.files && ev.target.files[0]); return; }
+  if (id === 'impFile') { importFiles(ev.target.files); ev.target.value = ''; return; }
   var m = /^roll-(elec|water)$/.exec(id);
   if (m && D) { D[m[1] + 'Roll'] = ev.target.checked; updInfo(m[1]); }
   if (id === 'pr-all') [].forEach.call(document.querySelectorAll('.pr-one'), function (x) { x.checked = ev.target.checked; });
