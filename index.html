@@ -446,10 +446,15 @@ function startApp() {
 }
 function load() {
   var seq = ++S.loadSeq, m = S.month;
-  S.loading = true; renderHead();
-  return api('getMonth', m).then(function (d) { if (seq === S.loadSeq) setData(d); })
-    .catch(function (e) { if (!/AUTH/.test(e.message)) { toast(errMsg(e), 'bad'); if (!S.data) document.getElementById('main').innerHTML = '<div class="card">โหลดข้อมูลไม่ได้: ' + esc(errMsg(e)) + '<\/div>'; } })
-    .then(function () { if (seq === S.loadSeq) { S.loading = false; render(); } });
+  S.loading = true; S.loadErr = ''; S.loadT0 = Date.now(); renderHead();
+  return api('getMonth', m).then(function (d) {
+    if (seq !== S.loadSeq) return;
+    if (!d || !d.rows) throw new Error('เซิร์ฟเวอร์ตอบข้อมูลไม่ครบ');
+    setData(d);
+  }).catch(function (e) {
+    if (seq !== S.loadSeq || /AUTH/.test(e.message)) return;
+    S.loadErr = errMsg(e); toast(S.loadErr, 'bad', 6000);
+  }).then(function () { if (seq === S.loadSeq) { S.loading = false; render(); } });
 }
 function setData(d) {
   if (!d || d.month !== S.month) return;
@@ -478,13 +483,34 @@ function renderHead() {
 function render() {
   renderHead();
   var el = document.getElementById('main');
-  if (!S.data) { el.innerHTML = '<div class="card loading">กำลังโหลด…<\/div>'; return; }
+  if (!S.data) {
+    el.innerHTML = S.loadErr && !S.loading ?
+      '<div class="card"><h3 style="color:var(--bad)">โหลดข้อมูลเดือน ' + monthLabel(S.month) + ' ไม่สำเร็จ<\/h3><p>' + esc(S.loadErr) + '<\/p><div class="mbtns"><button class="btn primary" data-act="reload">ลองใหม่<\/button><\/div><\/div>' :
+      '<div class="card loading">กำลังโหลด…<div class="muted" style="font-size:12.5px" id="loadSec"><\/div><\/div>';
+    if (S.loading) tickLoad();
+    return;
+  }
   var f = { dash: rDash, rooms: rRooms, meter: rMeter, bills: rBills, pay: rPay, report: rReport, settings: rSettings }[S.tab];
   var y = window.scrollY, bx = document.querySelector('.board'), bsx = bx ? bx.scrollLeft : 0;
-  var tt = TITLES[S.tab];
-  el.innerHTML = '<div class="ph"><div class="grow"><h1>' + tt[0] + '<\/h1><p>' + tt[1] + (S.tab !== 'settings' && S.tab !== 'report' ? ' · ' + monthLabel(S.month) : '') + '<\/p><\/div><\/div>' + f();
+  var tt = TITLES[S.tab], body;
+  try { body = f(); } catch (e) {
+    // แสดงสาเหตุบนจอแทนการค้าง (ช่วยหาปัญหา)
+    body = '<div class="card"><h3 style="color:var(--bad)">หน้านี้แสดงผลไม่ได้<\/h3><p>' + esc(String(e && e.message || e)) + '<\/p><p class="muted" style="font-size:13px">ถ่ายหน้าจอนี้ส่งให้ผู้ดูแลระบบ<\/p><\/div>';
+    if (window.console) console.error(e);
+  }
+  el.innerHTML = '<div class="ph"><div class="grow"><h1>' + tt[0] + '<\/h1><p>' + tt[1] + (S.tab !== 'settings' && S.tab !== 'report' ? ' · ' + monthLabel(S.month) : '') + '<\/p><\/div><\/div>' + body;
   window.scrollTo(0, y);
   bx = document.querySelector('.board'); if (bx) bx.scrollLeft = bsx;
+}
+function tickLoad() {
+  clearTimeout(S.loadTick);
+  S.loadTick = setTimeout(function () {
+    var e = document.getElementById('loadSec');
+    if (!e || !S.loading) return;
+    var sec = Math.round((Date.now() - S.loadT0) / 1000);
+    e.textContent = sec + ' วินาที' + (sec > 20 ? ' — นานผิดปกติ ตรวจอินเทอร์เน็ต หรือกดรีเฟรช' : '');
+    tickLoad();
+  }, 1000);
 }
 function go(tab) { closeModal(); S.tab = tab; ls('rent.tab', tab); render(); window.scrollTo(0, 0); if (tab === 'report' && !S.sum) loadSummary(); }
 
@@ -1589,6 +1615,7 @@ document.addEventListener('click', function (ev) {
   if (a === 'scAgain') { var f0 = SC.f, t0 = SC.target; openScanner(f0, t0); return; }
   if (a === 'scAlt') { SC.result = Number(t.dataset.v); document.getElementById('scVal').textContent = fmt(SC.result); [].forEach.call(document.querySelectorAll('.sc-alts button'), function (x) { x.classList.toggle('on', x === t); }); return; }
   if (a === 'logout') { gs('logout', [TOKEN]).catch(function () { }); TOKEN = ''; ls('rent.token', null); S.data = null; showLogin('ออกจากระบบแล้ว'); return; }
+  if (a === 'reload') { load(); return; }
   if (!S.data) return;
   if (a === 'close') closeModal();
   else if (a === 'dRange') { S.dRange = t.dataset.v; ls('rent.drange', S.dRange); render(); }
