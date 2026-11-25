@@ -246,13 +246,19 @@ input.big::placeholder{font-size:16px;font-weight:500;letter-spacing:0}
 .cal-g{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
 .cal-h{text-align:center;font-size:12.5px;color:var(--mut);font-weight:600;padding:2px 0}
 .cal-h.we{color:var(--bad)}
-.cd{min-height:108px;min-width:0;border:1px solid var(--line);background:#fff;border-radius:12px;padding:6px;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:3px;align-items:stretch;justify-content:flex-start}
-.cd:hover{border-color:var(--pri2)}
-.cd .dn{display:flex;justify-content:space-between;align-items:baseline;gap:4px;font-weight:700;font-size:14px}
-.cd .dn small{font-weight:600;font-size:11px;color:var(--ok);white-space:nowrap}
-.cd .dn small.full{color:var(--mut)}
-.cd.past{background:var(--line2)} .cd.past .dn{color:var(--mut)}
-.cd.today{border:2px solid var(--pri);padding:5px} .cd.today .dn{color:var(--pri)}
+.cd{min-height:108px;min-width:0;border:1.5px solid #e3d7c7;background:#fff;border-radius:12px;padding:6px;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:3px;align-items:stretch;justify-content:flex-start;box-shadow:0 1px 2px rgba(60,40,20,.06);transition:border-color .15s,box-shadow .15s}
+.cd:hover{border-color:var(--pri2);box-shadow:0 4px 12px rgba(60,40,20,.12)}
+.cd .dn{display:flex;justify-content:space-between;align-items:center;gap:4px;font-weight:700;font-size:15px;color:var(--ink)}
+.cd .dn small{font-weight:600;font-size:11px;white-space:nowrap;padding:0 7px;border-radius:999px;line-height:1.7;background:var(--ok-soft);color:var(--ok)}
+.cd .dn small.full{background:var(--bad-soft);color:var(--bad)}
+.cd.we{background:#fffaf4} .cd.we .dn{color:var(--bad)}
+.cd.has{background:#fdf6ee;border-color:#e6cdb3}
+.cd.past{background:#ede6dc;border-color:#ddd2c3;box-shadow:none} .cd.past .dn{color:#a89a8b}
+.cd.past .dn small{background:none;color:#a89a8b;padding:0}
+.cd.past .bk{opacity:.7}
+.cd.today{border:2px solid var(--pri);padding:5px;background:#fff;box-shadow:0 0 0 3px rgba(123,63,34,.12)}
+.cd.today .dn{color:var(--pri)}
+.cd .tdy{font-size:10.5px;font-weight:700;color:#fff;background:var(--pri);border-radius:999px;padding:0 6px;margin-left:4px;line-height:1.7}
 .cd.blank{visibility:hidden}
 .bk{display:block;font-size:11.5px;font-weight:600;border-radius:6px;padding:1px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.6;border-left:3px solid transparent}
 .bk.st{border-left-color:currentColor}
@@ -305,6 +311,7 @@ input.big::placeholder{font-size:16px;font-weight:500;letter-spacing:0}
   .cd.today{padding:2px}
   .cd .dn{font-size:12.5px}
   .cd .dn small{display:none}
+  .cd .tdy{display:none}
   .bk{font-size:10px;padding:0 3px;border-radius:4px;border-left-width:2px}
   .cd .bk .g{display:none}
 }
@@ -845,7 +852,8 @@ function rBook() {
   for (var i = 0; i < first; i++) h += '<div class="cd blank"><\/div>';
   for (var d = 1; d <= dim; d++) {
     var ds = m + '-' + pad(d), on = bkOn(ds), outs = bkOut(ds), free = B.rooms.length - on.length;
-    h += '<button class="cd' + (ds === t ? ' today' : ds < t ? ' past' : '') + '" data-act="bkDay" data-d="' + ds + '"><span class="dn">' + d +
+    var wd = (first + d - 1) % 7;
+    h += '<button class="cd' + (ds === t ? ' today' : ds < t ? ' past' : '') + (wd === 0 || wd === 6 ? ' we' : '') + (on.length || outs.length ? ' has' : '') + '" data-act="bkDay" data-d="' + ds + '"><span class="dn"><span>' + d + (ds === t ? '<span class="tdy">วันนี้<\/span>' : '') + '<\/span>' +
       (B.rooms.length ? '<small class="' + (free <= 0 ? 'full' : '') + '">' + (free <= 0 ? 'เต็ม' : 'ว่าง ' + free) + '<\/small>' : '') + '<\/span>' +
       on.map(function (b) {
         return '<span class="bk ' + bkColor(b.room) + (b.checkIn === ds ? ' st' : '') + '" data-act="bkEdit" data-id="' + esc(b.id) + '" title="' + esc(b.room + ' ' + b.guest) + '">' + esc(b.room) + '<span class="g"> ' + esc(b.guest) + '<\/span><\/span>';
