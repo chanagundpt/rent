@@ -2251,7 +2251,6 @@ function renderRepMonth(m) {
 }
 // หน้าต่างพิมพ์รายงาน (A4)
 var REP_CSS =
-  '@page{size:A4 portrait;margin:12mm 10mm}' +
   '*{box-sizing:border-box}body{margin:0;font-family:Sarabun,Anuphan,Tahoma,sans-serif;color:#111;font-size:11pt;-webkit-print-color-adjust:exact;print-color-adjust:exact;background:#e5e0d8}' +
   '.doc{width:210mm;min-height:297mm;background:#fff;margin:0 auto 6mm;padding:12mm 10mm}' +
   '.rh{display:flex;align-items:center;gap:4mm;border-bottom:2px solid #7b3f22;padding-bottom:2.5mm;margin-bottom:3mm}' +
@@ -2269,12 +2268,20 @@ var REP_CSS =
   '.bar{position:sticky;top:0;background:#2a211b;color:#fff;padding:10px 16px;display:flex;gap:12px;align-items:center;font-family:sans-serif;z-index:2;flex-wrap:wrap}' +
   '.bar button{font:inherit;padding:9px 20px;border-radius:8px;border:0;background:#d07a36;color:#fff;font-weight:700;cursor:pointer;font-size:15px}.bar button.g{background:#5a4a3d}' +
   '.bar small{display:block;color:#e9ddd0;font-weight:400;font-size:12.5px;margin-top:2px}' +
-  '@media print{body{background:#fff}.bar{display:none}.doc{width:auto;min-height:0;margin:0;padding:0}}';
-function printDoc(title, body) {
+  '.bar .og{display:inline-flex;background:#5a4a3d;border-radius:8px;padding:3px}.bar .og button{background:none;padding:6px 14px;font-size:14px}.bar .og button.on{background:#fff;color:#2a211b}' +
+  '.land .doc{width:297mm;min-height:210mm}' +
+  'table.auto{table-layout:auto}table.auto td{overflow:visible}' +
+  '@media print{body{background:#fff}.bar{display:none}.doc,.land .doc{width:auto;min-height:0;margin:0;padding:0}}';
+// orient: 'portrait' | 'landscape' — สลับได้จากปุ่มบนแถบด้านบนของหน้าพิมพ์
+function printDoc(title, body, orient) {
+  orient = orient === 'landscape' ? 'landscape' : 'portrait';
   var w = window.open('', '_blank');
   var doc = '<!DOCTYPE html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>' + esc(title) + '<\/title><link rel="stylesheet" href="' + FONT_CSS + '"><style>' + REP_CSS + '<\/style><\/head>' +
-    '<body><div class="bar"><div style="flex:1;min-width:220px"><b>' + esc(title) + '<\/b><small>ในหน้าต่างพิมพ์: กระดาษ A4 · แนวตั้ง · สเกล 100% · เปิด "กราฟิกพื้นหลัง" · หรือเลือก "บันทึกเป็น PDF"<\/small><\/div>' +
-    '<button onclick="window.print()">🖨 พิมพ์<\/button><button class="g" onclick="window.close()">ปิด<\/button><\/div><div class="doc">' + body + '<\/div><\/body><\/html>';
+    '<style id="pg">@page{size:A4 ' + orient + ';margin:12mm 10mm}<\/style>' +
+    '<body class="' + (orient === 'landscape' ? 'land' : '') + '"><div class="bar"><div style="flex:1;min-width:220px"><b>' + esc(title) + '<\/b><small>ในหน้าต่างพิมพ์: กระดาษ A4 · <span id="oT">' + (orient === 'landscape' ? 'แนวนอน' : 'แนวตั้ง') + '<\/span> · สเกล 100% · เปิด "กราฟิกพื้นหลัง" · หรือเลือก "บันทึกเป็น PDF"<\/small><\/div>' +
+    '<div class="og"><button id="oP" class="' + (orient === 'portrait' ? 'on' : '') + '" onclick="setO(\'portrait\')">แนวตั้ง<\/button><button id="oL" class="' + (orient === 'landscape' ? 'on' : '') + '" onclick="setO(\'landscape\')">แนวนอน<\/button><\/div>' +
+    '<button onclick="window.print()">🖨 พิมพ์<\/button><button class="g" onclick="window.close()">ปิด<\/button><\/div><div class="doc">' + body + '<\/div>' +
+    '<\/body><\/html>';
   var target = w;
   if (!target || target.closed) {
     var fr = document.getElementById('printFrame');
@@ -2282,6 +2289,15 @@ function printDoc(title, body) {
     target = fr.contentWindow;
   }
   target.document.open(); target.document.write(doc); target.document.close();
+  // ปุ่มแนวตั้ง/แนวนอน: กำหนดฟังก์ชันจากหน้านี้ (ไม่ใช้สคริปต์ในหน้าพิมพ์ ซึ่งอาจค้างรอฟอนต์โหลด)
+  target.setO = function (o) {
+    var dd = target.document, pg = dd.getElementById('pg');
+    if (pg) pg.textContent = '@page{size:A4 ' + o + ';margin:12mm 10mm}';
+    dd.body.className = o === 'landscape' ? 'land' : '';
+    dd.getElementById('oP').className = o === 'portrait' ? 'on' : '';
+    dd.getElementById('oL').className = o === 'landscape' ? 'on' : '';
+    dd.getElementById('oT').textContent = o === 'landscape' ? 'แนวนอน' : 'แนวตั้ง';
+  };
   var gop = function () { try { target.focus(); target.print(); } catch (e) { } };
   setTimeout(function () {
     if (target.document.fonts && target.document.fonts.ready) target.document.fonts.ready.then(function () { setTimeout(gop, 300); });
@@ -2322,13 +2338,13 @@ function printRepSummary() {
   list.forEach(function (m) { Object.keys(t).forEach(function (k) { t[k] += m[k] || 0; }); });
   var span = monthLabel(list[list.length - 1].month) + ' – ' + monthLabel(list[0].month);
   var body = repHead('สรุปรายรับรายเดือน', span) +
-    '<table><thead><tr><th style="width:14%">เดือน<\/th><th style="width:6%">ห้อง<\/th><th>ค่าห้อง<\/th><th>ค่าไฟ<\/th><th>หน่วยไฟ<\/th><th>ค่าน้ำ<\/th><th>หน่วยน้ำ<\/th><th>อื่นๆ<\/th><th>ยอดบิล<\/th><th>รับแล้ว<\/th><th>ค้าง<\/th><\/tr><\/thead><tbody>' +
+    '<table class="auto"><thead><tr><th>เดือน<\/th><th>ห้อง<\/th><th>ค่าห้อง<\/th><th>ค่าไฟ<\/th><th>หน่วยไฟ<\/th><th>ค่าน้ำ<\/th><th>หน่วยน้ำ<\/th><th>อื่นๆ<\/th><th>ยอดบิล<\/th><th>รับแล้ว<\/th><th>ค้าง<\/th><\/tr><\/thead><tbody>' +
     list.map(function (m) {
       return '<tr><td>' + monthLabel(m.month) + '<\/td><td>' + m.bills + '<\/td><td>' + money(m.rent) + '<\/td><td>' + money(m.elec) + '<\/td><td>' + fmt(m.elecUnits) + '<\/td><td>' + money(m.water) + '<\/td><td>' + fmt(m.waterUnits) + '<\/td><td>' + money(m.other) + '<\/td><td><b>' + money(m.billed) + '<\/b><\/td><td>' + money(m.paid) + '<\/td><td>' + (m.outstanding ? money(m.outstanding) : '-') + '<\/td><\/tr>';
     }).join('') +
     '<tr class="tot"><td>รวม ' + list.length + ' เดือน<\/td><td><\/td><td>' + money(t.rent) + '<\/td><td>' + money(t.elec) + '<\/td><td>' + fmt(t.elecUnits) + '<\/td><td>' + money(t.water) + '<\/td><td>' + fmt(t.waterUnits) + '<\/td><td>' + money(t.other) + '<\/td><td>' + money(t.billed) + '<\/td><td>' + money(t.paid) + '<\/td><td>' + (t.outstanding ? money(t.outstanding) : '-') + '<\/td><\/tr><\/tbody><\/table>' +
     '<div style="font-size:9pt;color:#666;margin-top:2mm">ยอดบิล = ค่าห้อง + ไฟ + น้ำ + อื่นๆ ของเดือนนั้น (ไม่รวมยอดค้างยกมา)<\/div>' + repFoot();
-  printDoc('สรุปรายรับรายเดือน', body);
+  printDoc('สรุปรายรับรายเดือน', body, 'landscape');
 }
 function printBills(bills, kind, layout) {
   if (!bills.length) { toast('ไม่มีบิลให้พิมพ์', 'bad'); return; }
