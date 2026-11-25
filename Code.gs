@@ -4,13 +4,13 @@
  * ตั้งรหัสผ่าน: เมนูในชีต ค่าเช่าห้อง → ตั้งรหัสผ่านเข้าโปรแกรม
  * Deploy: เว็บแอป · Execute as: Me · Who has access: Anyone (ทุกคำสั่งต้องเข้าสู่ระบบด้วยรหัสผ่าน)
  */
-var VERSION = '2026-11-24.6';
+var VERSION = '2026-11-25.1';
 
 var T = {
   rooms: {
     name: 'ห้อง',
-    keys: ['room', 'floor', 'tenant', 'phone', 'rent', 'other', 'otherName', 'status', 'moveIn', 'deposit', 'note'],
-    head: ['ห้อง', 'ชั้น', 'ผู้เช่า', 'เบอร์โทร', 'ค่าเช่า', 'ค่าบริการอื่น/เดือน', 'ชื่อค่าบริการอื่น', 'สถานะ', 'วันเข้าอยู่', 'เงินประกัน', 'หมายเหตุ']
+    keys: ['room', 'floor', 'tenant', 'phone', 'rent', 'other', 'otherName', 'status', 'moveIn', 'deposit', 'note', 'daily'],
+    head: ['ห้อง', 'ชั้น', 'ผู้เช่า', 'เบอร์โทร', 'ค่าเช่า', 'ค่าบริการอื่น/เดือน', 'ชื่อค่าบริการอื่น', 'สถานะ', 'วันเข้าอยู่', 'เงินประกัน', 'หมายเหตุ', 'ห้องรายวัน (1 = ใช่, 0 = ไม่ใช่)']
   },
   readings: {
     name: 'มิเตอร์',
@@ -30,6 +30,12 @@ var T = {
     head: ['เลขที่บิล', 'เดือน', 'ห้อง', 'ผู้เช่า', 'ไฟ เลขก่อน', 'ไฟ เลขหลัง', 'ไฟ หน่วย', 'ค่าไฟ', 'น้ำ เลขก่อน', 'น้ำ เลขหลัง', 'น้ำ หน่วย', 'ค่าน้ำ',
       'ค่าเช่า', 'ค่าบริการอื่น', 'ชื่อค่าบริการอื่น', 'รายการเพิ่ม', 'รวมรายการเพิ่ม', 'ยอดค้างยกมา', 'ยอดค้างจากบิล', 'ยอดรวม', 'สถานะ', 'ยกไปบิล',
       'วันที่ชำระ', 'ยอดที่ชำระ', 'วิธีชำระ', 'ออกบิลเมื่อ', 'ครบกำหนด', 'หมายเหตุ']
+  },
+  // การจองห้องรายวัน: วันออก = วันที่ลูกค้าออก (ไม่นับเป็นคืนที่พัก) จำนวนคืน = วันออก − วันเข้าพัก
+  bookings: {
+    name: 'จองรายวัน',
+    keys: ['id', 'room', 'guest', 'phone', 'checkIn', 'checkOut', 'nights', 'rate', 'total', 'paid', 'status', 'note', 'createdAt'],
+    head: ['รหัส', 'ห้อง', 'ชื่อผู้จอง', 'เบอร์โทร', 'วันเข้าพัก', 'วันออก', 'จำนวนคืน', 'ราคา/คืน', 'ยอดรวม', 'รับเงินแล้ว', 'สถานะ', 'หมายเหตุ', 'บันทึกเมื่อ']
   }
 };
 
@@ -47,9 +53,10 @@ var SETTINGS_DEF = [
   ['lateFee', 'ค่าปรับชำระล่าช้า บาท/วัน', '50'],
   ['payNote', 'วิธีชำระเงิน (พิมพ์บนบิล)', 'โอนเข้าบัญชีธนาคารกสิกรไทย เลขที่ 133-8-98331-6 นายจักรกฤษณ์ ณ ป้อมเพชร์ หรือสแกน QR CODE และส่งสลิปทางไลน์ @588rauwn'],
   ['footer', 'ข้อความท้ายบิล', 'กรุณาชำระเงินก่อนวันที่ 10 ของเดือนถัดไป หากชำระล่าช้า ปรับวันละ 50 บาท'],
-  ['defaultRent', 'ค่าเช่าเริ่มต้น (ใช้ตอนเพิ่มห้องใหม่)', '3000']
+  ['defaultRent', 'ค่าเช่าเริ่มต้น (ใช้ตอนเพิ่มห้องใหม่)', '3000'],
+  ['dailyRate', 'ค่าห้องรายวัน บาท/คืน (ค่าเริ่มต้นตอนจอง)', '0']
 ];
-var NUM_SETTINGS = ['elecRate', 'waterRate', 'elecMin', 'waterMin', 'dueDay', 'lateFee', 'defaultRent'];
+var NUM_SETTINGS = ['elecRate', 'waterRate', 'elecMin', 'waterMin', 'dueDay', 'lateFee', 'defaultRent', 'dailyRate'];
 // ห้องและเลขมิเตอร์เดือน ต.ค. 2569 จากไฟล์ 10-26.xlsx: [ห้อง, ชั้น, ค่าเช่า, ผู้เช่า/หมายเหตุ, ไฟก่อน, ไฟหลัง, น้ำก่อน, น้ำหลัง]
 var START_MONTH = '2026-10';
 var START_ROOMS = [
@@ -65,6 +72,7 @@ var START_ROOMS = [
 ];
 var ST = { UNPAID: 'ค้างชำระ', PAID: 'ชำระแล้ว', CARRIED: 'ยกยอดไปบิลถัดไป', CANCEL: 'ยกเลิก' };
 var VACANT = 'ว่าง', OCCUPIED = 'มีผู้เช่า';
+var BK = { BOOKED: 'จองแล้ว', IN: 'เข้าพักแล้ว', OUT: 'ออกแล้ว', CANCEL: 'ยกเลิก' };
 
 // ---------- หน้าเว็บ / เมนู ----------
 function doGet() {
@@ -149,7 +157,8 @@ var API_ = {
   getMonth: getMonth_, getSummary: getSummary_, saveReading: saveReading_, deleteReading: deleteReading_,
   saveExtra: saveExtra_, deleteExtra: deleteExtra_, issueBills: issueBills_, cancelBill: cancelBill_,
   setPaid: setPaid_, setUnpaid: setUnpaid_, saveRoomForm: saveRoomForm_, setRoomList: setRoomList_,
-  deleteRoom: deleteRoom_, saveSettings: saveSettings_, changePassword: changePassword_, roomHistory: roomHistory_, importHistory: importHistory_
+  deleteRoom: deleteRoom_, saveSettings: saveSettings_, changePassword: changePassword_, roomHistory: roomHistory_, importHistory: importHistory_,
+  getBookings: getBookings_, saveBooking: saveBooking_, deleteBooking: deleteBooking_
 };
 // เรียกจากหน้าเว็บที่โฮสต์ที่อื่น (GitHub Pages): POST text/plain {"fn":"login|logout|rpc|ping","args":[...]}
 function doPost(e) {
@@ -297,9 +306,22 @@ function saveSettings_(obj, viewMonth) {
 }
 
 // ---------- ติดตั้ง ----------
+// ชีตเดิมที่สร้างก่อนมีคอลัมน์ใหม่: เติมหัวคอลัมน์ที่ยังว่าง (ทำครั้งเดียวต่อเวอร์ชัน)
+function ensureHeads_() {
+  var pr = props_();
+  if (pr.getProperty('HEAD_V') === VERSION) return;
+  Object.keys(T).forEach(function (k) {
+    var t = T[k], sh = sheet_(t), cur = sh.getRange(1, 1, 1, t.head.length).getDisplayValues()[0];
+    t.head.forEach(function (h, i) {
+      if (String(cur[i] || '').trim() === '') sh.getRange(1, i + 1).setNumberFormat('@').setValue(h).setFontWeight('bold');
+    });
+  });
+  pr.setProperty('HEAD_V', VERSION);
+}
 function setup_() {
   var s = settings_();
   Object.keys(T).forEach(function (k) { sheet_(T[k]); });
+  ensureHeads_();
   if (!rows_(T.rooms).length) {
     // ครั้งแรก: ห้องตามไฟล์เดิม + เลขมิเตอร์ ต.ค. 2569 (เลขหลังจด = เลขเดือนก่อนของ พ.ย.)
     writeAll_(T.rooms, START_ROOMS.map(function (x) {
@@ -432,7 +454,7 @@ function calc_(c, month, room) {
   var s = c.s, rd = readingOf_(c, month, room.room), errs = [], warns = [];
   var occupied = room.status !== VACANT;
   var res = {
-    room: room.room, floor: room.floor, tenant: room.tenant, phone: room.phone, status: room.status, occupied: occupied,
+    room: room.room, floor: room.floor, tenant: room.tenant, phone: room.phone, status: room.status, occupied: occupied, daily: isDaily_(room),
     reading: rd ? { elec: rd.elec, water: rd.water, elecPrev: rd.elecPrev, waterPrev: rd.waterPrev,
       elecRoll: rd.elecRoll === '1', waterRoll: rd.waterRoll === '1', at: rd.at, note: rd.note } : null
   };
@@ -701,7 +723,8 @@ function saveRoom_(o, orig, viewMonth) {
       room: room, floor: String(o.floor || '').trim(), tenant: String(o.tenant || '').trim(), phone: String(o.phone || '').trim(),
       rent: numStr_(o.rent, 'ค่าเช่า') || '0', other: numStr_(o.other, 'ค่าบริการอื่น'), otherName: String(o.otherName || '').trim(),
       status: o.status === VACANT ? VACANT : OCCUPIED, moveIn: String(o.moveIn || '').trim(),
-      deposit: numStr_(o.deposit, 'เงินประกัน'), note: String(o.note || '').trim()
+      deposit: numStr_(o.deposit, 'เงินประกัน'), note: String(o.note || '').trim(),
+      daily: o.daily === true || o.daily === '1' ? '1' : (o.daily === false || o.daily === '0' ? '0' : '')
     };
     var idx = -1;
     for (var i = 0; i < list.length; i++) if (list[i].room === (orig || room)) idx = i;
@@ -710,11 +733,11 @@ function saveRoom_(o, orig, viewMonth) {
     return getMonth_(viewMonth || today_().slice(0, 7));
   });
 }
-// แก้จากหน้าเว็บ: คงช่องที่หน้าเว็บไม่ได้แสดง (วันเข้าอยู่ เงินประกัน หมายเหตุ)
+// แก้จากหน้าเว็บ: คงช่องที่หน้าเว็บไม่ได้แสดง (วันเข้าอยู่ เงินประกัน หมายเหตุ / ห้องรายวัน ถ้าไม่ได้ส่งมา)
 function saveRoomForm_(o, orig, viewMonth) {
   var old = rows_(T.rooms).filter(function (r) { return r.room === (orig || ''); })[0] || {};
   var x = {};
-  ['moveIn', 'deposit', 'note'].forEach(function (k) { x[k] = old[k] || ''; });
+  ['moveIn', 'deposit', 'note', 'daily'].forEach(function (k) { x[k] = old[k] || ''; });
   Object.keys(o || {}).forEach(function (k) { x[k] = o[k]; });
   return saveRoom_(x, orig, viewMonth);
 }
@@ -746,5 +769,87 @@ function deleteRoom_(room, viewMonth) {
     if (roomHasData_(c, room)) throw new Error('ห้องนี้มีมิเตอร์/บิลแล้ว ลบไม่ได้ — เปลี่ยนสถานะเป็น "ว่าง" แทน');
     writeAll_(T.rooms, c.rooms.filter(function (r) { return r.room !== room; }));
     return getMonth_(viewMonth || today_().slice(0, 7));
+  });
+}
+
+// ---------- API: จองห้องรายวัน ----------
+// ห้องรายวัน = ติ๊ก "ห้องรายวัน" ในหน้าแก้ไขห้อง (คอลัมน์ ห้องรายวัน = 1)
+// ห้องที่ยังไม่เคยตั้งค่า แต่ชื่อผู้เช่า/หมายเหตุมีคำว่า "รายวัน" ถือเป็นห้องรายวันด้วย (ตั้ง 0 เพื่อปิด)
+function isDaily_(room) {
+  if (room.daily === '1') return true;
+  if (room.daily === '0') return false;
+  return /รายวัน/.test(String(room.tenant || '') + ' ' + String(room.note || ''));
+}
+function dateOk_(s, label) {
+  s = String(s || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || isNaN(Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10)))) throw new Error(label + ' ไม่ถูกต้อง');
+  return s;
+}
+function dayNum_(s) { return Math.round(Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10)) / 86400000); }
+function bookOut_(b) {
+  var o = {};
+  Object.keys(b).forEach(function (k) { o[k] = b[k]; });
+  ['nights', 'rate', 'total', 'paid'].forEach(function (k) { o[k] = num_(b[k]) || 0; });
+  return o;
+}
+function getBookings_(month) {
+  month = monthOk_(month);
+  setup_();
+  var c = ctx_(), s = c.s, list = rows_(T.bookings), today = today_();
+  var from = month + '-01', to = addMonth_(month, 1) + '-01';
+  return {
+    month: month, today: today, dailyRate: s.dailyRate,
+    rooms: c.rooms.filter(isDaily_).map(function (r) { return { room: r.room, floor: r.floor }; }),
+    list: list.filter(function (b) { return b.checkIn < to && b.checkOut > from; })
+      .sort(function (a, b) { return a.checkIn < b.checkIn ? -1 : a.checkIn > b.checkIn ? 1 : (a.room < b.room ? -1 : 1); }).map(bookOut_),
+    // ที่จะเข้าพัก/กำลังพัก (ไม่ขึ้นกับเดือนที่เลือก)
+    upcoming: list.filter(function (b) { return b.status !== BK.CANCEL && b.status !== BK.OUT && b.checkOut >= today; })
+      .sort(function (a, b) { return a.checkIn < b.checkIn ? -1 : 1; }).slice(0, 30).map(bookOut_)
+  };
+}
+function saveBooking_(o, viewMonth) {
+  return lock_(function () {
+    o = o || {};
+    var c = ctx_(), list = rows_(T.bookings).slice();
+    var old = o.id ? list.filter(function (b) { return b.id === o.id; })[0] : null;
+    if (o.id && !old) throw new Error('ไม่พบการจองนี้ (อาจถูกลบไปแล้ว)');
+    var room = String(o.room || '').trim();
+    var rm = c.rooms.filter(function (r) { return r.room === room; })[0];
+    if (!rm) throw new Error('เลือกห้อง');
+    if (!isDaily_(rm) && !(old && old.room === room)) throw new Error('ห้อง ' + room + ' ไม่ได้ตั้งเป็นห้องรายวัน');
+    var guest = String(o.guest || '').trim();
+    if (!guest) throw new Error('ใส่ชื่อผู้จอง');
+    var ci = dateOk_(o.checkIn, 'วันเข้าพัก'), co = dateOk_(o.checkOut, 'วันออก');
+    var nights = dayNum_(co) - dayNum_(ci);
+    if (nights < 1) throw new Error('วันออกต้องอยู่หลังวันเข้าพักอย่างน้อย 1 วัน');
+    if (nights > 366) throw new Error('จองได้ไม่เกิน 366 คืน');
+    var status = [BK.BOOKED, BK.IN, BK.OUT, BK.CANCEL].indexOf(o.status) >= 0 ? o.status : BK.BOOKED;
+    if (status !== BK.CANCEL) {
+      var clash = list.filter(function (b) {
+        return b.room === room && b.id !== o.id && b.status !== BK.CANCEL && b.checkIn < co && b.checkOut > ci;
+      })[0];
+      if (clash) throw new Error('ห้อง ' + room + ' มีการจองซ้อนอยู่แล้ว: ' + clash.guest + ' (' + clash.checkIn + ' ถึง ' + clash.checkOut + ')');
+    }
+    var rate = numStr_(o.rate, 'ราคา/คืน') || '0';
+    var total = numStr_(o.total, 'ยอดรวม');
+    if (total === '') total = String(r2_(+rate * nights));
+    var rec = {
+      id: old ? old.id : ('B' + Date.now().toString(36) + Math.floor(Math.random() * 1e4)),
+      room: room, guest: guest, phone: String(o.phone || '').trim(), checkIn: ci, checkOut: co, nights: String(nights),
+      rate: rate, total: total, paid: numStr_(o.paid, 'รับเงินแล้ว') || '0', status: status,
+      note: String(o.note || '').trim(), createdAt: old ? old.createdAt : now_()
+    };
+    if (old) list[list.indexOf(old)] = rec; else list.push(rec);
+    writeAll_(T.bookings, list);
+    var d = getBookings_(viewMonth ? monthOk_(viewMonth) : ci.slice(0, 7));
+    d.saved = bookOut_(rec);
+    return d;
+  });
+}
+function deleteBooking_(id, viewMonth) {
+  return lock_(function () {
+    var list = rows_(T.bookings);
+    writeAll_(T.bookings, list.filter(function (b) { return b.id !== id; }));
+    return getBookings_(viewMonth || today_().slice(0, 7));
   });
 }
