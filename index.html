@@ -159,6 +159,8 @@ table.t th.l,table.t td.l{text-align:left}
 table.t td small{display:block;color:var(--mut);font-size:12px}
 table.t tfoot td{font-weight:700;border-bottom:0}
 table.t tr.click{cursor:pointer}
+.kpis.rk .kpi{text-align:center}
+.kpis.rk .kpi .l{justify-content:center}
 table.t.rt{table-layout:fixed;min-width:640px}
 table.t.rt th,table.t.rt td{text-align:center}
 table.t.rt td small{white-space:nowrap}
@@ -2223,7 +2225,7 @@ function renderRepMonth(m) {
   var noBill = d.rows.filter(function (r) { return !r.bill; }).map(function (r) { return r.room; });
   var h = '<div class="mh"><div class="grow"><h3>ค่าใช้จ่ายรายห้อง · ' + monthLabel(m) + '<\/h3><div class="muted">' + rows.length + ' ห้องที่ออกบิล' + (noBill.length ? ' · ไม่มีบิล: ' + esc(noBill.join(', ')) : '') + '<\/div><\/div>' +
     (rows.length ? '<button class="btn primary sm" data-act="repPrint" data-m="' + m + '" style="min-height:38px">🖨 พิมพ์รายงาน<\/button>' : '') + '<button class="x" data-act="close">✕<\/button><\/div>';
-  h += '<div class="kpis" style="margin:8px 0 12px">' +
+  h += '<div class="kpis rk" style="margin:8px 0 12px">' +
     '<div class="kpi"><div class="l">ค่าห้อง<\/div><div class="v" style="font-size:20px">' + baht(t.rent) + '<\/div><\/div>' +
     '<div class="kpi elec"><div class="l">ค่าไฟ<\/div><div class="v" style="font-size:20px">' + baht(t.elec) + '<\/div><div class="s">' + fmt(t.elecU) + ' หน่วย<\/div><\/div>' +
     '<div class="kpi water"><div class="l">ค่าน้ำ<\/div><div class="v" style="font-size:20px">' + baht(t.water) + '<\/div><div class="s">' + fmt(t.waterU) + ' หน่วย<\/div><\/div>' +
@@ -2262,7 +2264,7 @@ var REP_CSS =
   'td.l{text-align:left;padding-left:2mm}td small{color:#666;font-size:8.5pt;margin-left:1mm}' +
   'tr.tot td{font-weight:700;background:#faf5ef;border-top:2px solid #7b3f22}' +
   'tr{break-inside:avoid}thead{display:table-header-group}' +
-  '.sum{display:flex;gap:3mm;margin:3mm 0}.sum div{flex:1;border:1px solid #d8cdbf;border-radius:2mm;padding:1.5mm 2.5mm}.sum small{display:block;color:#666;font-size:9pt}.sum b{font-size:12.5pt}' +
+  '.sum{display:flex;gap:3mm;margin:3mm 0}.sum div{flex:1;border:1px solid #d8cdbf;border-radius:2mm;padding:1.5mm 2.5mm;text-align:center}.sum small{display:block;color:#666;font-size:9pt}.sum b{font-size:12.5pt}' +
   '.ft{display:flex;justify-content:space-between;margin-top:6mm;font-size:9.5pt;color:#555}.sg{margin-top:14mm;display:flex;justify-content:flex-end}.sg div{width:65mm;text-align:center;border-top:1px dotted #555;padding-top:1mm;font-size:10pt}' +
   '.bar{position:sticky;top:0;background:#2a211b;color:#fff;padding:10px 16px;display:flex;gap:12px;align-items:center;font-family:sans-serif;z-index:2;flex-wrap:wrap}' +
   '.bar button{font:inherit;padding:9px 20px;border-radius:8px;border:0;background:#d07a36;color:#fff;font-weight:700;cursor:pointer;font-size:15px}.bar button.g{background:#5a4a3d}' +
