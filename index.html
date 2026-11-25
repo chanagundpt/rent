@@ -2221,7 +2221,8 @@ function openRepMonth(m) {
 function renderRepMonth(m) {
   var d = REPC[m], rows = repRows(d), t = repSum(rows), hasFine = t.fine !== 0, hasOther = t.other !== 0, hasArr = t.arrears !== 0;
   var noBill = d.rows.filter(function (r) { return !r.bill; }).map(function (r) { return r.room; });
-  var h = '<div class="mh"><div><h3>ค่าใช้จ่ายรายห้อง · ' + monthLabel(m) + '<\/h3><div class="muted">' + rows.length + ' ห้องที่ออกบิล' + (noBill.length ? ' · ไม่มีบิล: ' + esc(noBill.join(', ')) : '') + '<\/div><\/div><button class="x" data-act="close">✕<\/button><\/div>';
+  var h = '<div class="mh"><div class="grow"><h3>ค่าใช้จ่ายรายห้อง · ' + monthLabel(m) + '<\/h3><div class="muted">' + rows.length + ' ห้องที่ออกบิล' + (noBill.length ? ' · ไม่มีบิล: ' + esc(noBill.join(', ')) : '') + '<\/div><\/div>' +
+    (rows.length ? '<button class="btn primary sm" data-act="repPrint" data-m="' + m + '" style="min-height:38px">🖨 พิมพ์รายงาน<\/button>' : '') + '<button class="x" data-act="close">✕<\/button><\/div>';
   h += '<div class="kpis" style="margin:8px 0 12px">' +
     '<div class="kpi"><div class="l">ค่าห้อง<\/div><div class="v" style="font-size:20px">' + baht(t.rent) + '<\/div><\/div>' +
     '<div class="kpi elec"><div class="l">ค่าไฟ<\/div><div class="v" style="font-size:20px">' + baht(t.elec) + '<\/div><div class="s">' + fmt(t.elecU) + ' หน่วย<\/div><\/div>' +
@@ -2243,8 +2244,7 @@ function renderRepMonth(m) {
     '<td data-l="ค่าไฟ"><span>' + money(t.elec) + '<small>' + fmt(t.elecU) + ' หน่วย<\/small><\/span><\/td><td data-l="ค่าน้ำ"><span>' + money(t.water) + '<small>' + fmt(t.waterU) + ' หน่วย<\/small><\/span><\/td>' +
     (hasOther ? '<td data-l="อื่นๆ">' + money(t.other) + '<\/td>' : '') + '<td data-l="รวม">' + money(t.month) + '<\/td>' + (hasArr ? '<td data-l="ค้างยกมา">' + money(t.arrears) + '<\/td>' : '') +
     '<td class="l" data-l="รับแล้ว">รับแล้ว ' + money(t.paid) + '<\/td><\/tr><\/tbody><\/table><\/div>';
-  h += '<p class="muted" style="font-size:12.5px">รวม = ค่าห้อง + ค่าปรับ + ไฟ + น้ำ + อื่นๆ ของเดือนนี้ (ไม่รวมยอดค้างยกมา) · กดที่ห้องเพื่อดูบิล<\/p>' +
-    '<div class="mbtns"><button class="btn primary grow" data-act="repPrint" data-m="' + m + '">🖨 พิมพ์รายงานเดือนนี้<\/button><\/div>';
+  h += '<p class="muted" style="font-size:12.5px">รวม = ค่าห้อง + ค่าปรับ + ไฟ + น้ำ + อื่นๆ ของเดือนนี้ (ไม่รวมยอดค้างยกมา) · กดที่ห้องเพื่อดูบิล<\/p>';
   var box = document.getElementById('modalBox'); box.innerHTML = h;
 }
 // หน้าต่างพิมพ์รายงาน (A4)
