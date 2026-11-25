@@ -158,6 +158,9 @@ table.t td{padding:10px 8px;border-bottom:1px solid var(--line2);text-align:righ
 table.t th.l,table.t td.l{text-align:left}
 table.t td small{display:block;color:var(--mut);font-size:12px}
 table.t tfoot td{font-weight:700;border-bottom:0}
+table.t tr.click{cursor:pointer}
+table.t tr.click:hover td{background:var(--line2)}
+table.t tr.tot td{font-weight:700;background:var(--pri-soft);border-bottom:0}
 .scrollx{overflow-x:auto}
 .chart{display:flex;align-items:flex-end;gap:8px;height:170px;padding:8px 4px 0;border-bottom:1px solid var(--line)}
 .chart div{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;min-width:0}
@@ -313,6 +316,9 @@ input.big::placeholder{font-size:16px;font-weight:500;letter-spacing:0}
   table.t.cards td:before{content:attr(data-l);color:var(--mut);font-size:13px;text-align:left}
   table.t.cards td.head{font-weight:700;font-size:16px}
   table.t.cards td.head:before{display:none}
+  table.t.cards td.head span{display:flex;justify-content:space-between;width:100%;align-items:baseline}
+  table.t.cards td span small{display:inline;margin-left:6px}
+  table.t.cards tr.tot{background:var(--pri-soft)}
 }
 @media (max-width:860px){
   .card.calc{padding:12px 8px}
@@ -527,7 +533,7 @@ function setData(d) {
   if (!d || d.month !== S.month) return;
   S.q.forEach(function (p) { if (p.month === d.month) { var r = d.rows.filter(function (x) { return x.room === p.room; })[0]; if (r) r._saving = true; } });
   S.data = d;
-  S.sum = null; DC = {}; // สรุปอาจเปลี่ยน — โหลดใหม่เมื่อต้องใช้
+  S.sum = null; DC = {}; REPC = {}; // สรุปอาจเปลี่ยน — โหลดใหม่เมื่อต้องใช้
 }
 function rowOf(room) { return S.data ? S.data.rows.filter(function (r) { return r.room === room; })[0] : null; }
 function hasF(r, f) { return !!(r.reading && String(r.reading[f] == null ? '' : r.reading[f]) !== ''); }
@@ -1884,6 +1890,7 @@ function findBill(no) {
   var b = null;
   S.data.rows.forEach(function (r) { if (r.bill && r.bill.no === no) b = r.bill; });
   (S.data.unpaid || []).forEach(function (x) { if (x.no === no) b = x; });
+  if (!b) Object.keys(REPC).forEach(function (m) { REPC[m].rows.forEach(function (r) { if (r.bill && r.bill.no === no) b = r.bill; }); });
   return b;
 }
 function openPay(no) {
@@ -1929,9 +1936,9 @@ function rReport() {
   h += '<div class="card"><h3>สรุปรายปี<\/h3><div class="scrollx"><table class="t"><thead><tr><th class="l">ปี<\/th><th>เดือน<\/th><th>ค่าห้อง<\/th><th>ค่าไฟ<\/th><th>ค่าน้ำ<\/th><th>อื่นๆ<\/th><th>ยอดบิล<\/th><th>รับแล้ว<\/th><th>ค้าง<\/th><\/tr><\/thead><tbody>' +
     Object.keys(years).sort().reverse().map(function (k) { var t = years[k]; return '<tr><td class="l"><b>' + (+k + 543) + '<\/b><\/td><td>' + t.n + '<\/td><td>' + money(t.rent) + '<\/td><td>' + money(t.elec) + '<\/td><td>' + money(t.water) + '<\/td><td>' + money(t.other) + '<\/td><td><b>' + money(t.billed) + '<\/b><\/td><td style="color:var(--ok)">' + money(t.paid) + '<\/td><td style="color:var(--bad)">' + (t.outstanding ? money(t.outstanding) : '–') + '<\/td><\/tr>'; }).join('') +
     '<\/tbody><\/table><\/div><\/div>';
-  h += '<div class="card"><h3>สรุปรายเดือน<\/h3><div class="scrollx"><table class="t"><thead><tr><th class="l">เดือน<\/th><th>ห้อง<\/th><th>ค่าห้อง<\/th><th>ค่าไฟ<\/th><th>หน่วยไฟ<\/th><th>ค่าน้ำ<\/th><th>หน่วยน้ำ<\/th><th>อื่นๆ<\/th><th>ยอดบิล<\/th><th>รับแล้ว<\/th><th>ค้าง<\/th><\/tr><\/thead><tbody>' +
+  h += '<div class="card"><h3><span class="grow">สรุปรายเดือน<\/span><button class="btn sm" data-act="repPrintSum">🖨 พิมพ์สรุป<\/button><\/h3><div class="muted" style="font-size:13px;margin:-6px 0 8px">กดที่เดือนเพื่อดูค่าใช้จ่ายรายห้อง<\/div><div class="scrollx"><table class="t"><thead><tr><th class="l">เดือน<\/th><th>ห้อง<\/th><th>ค่าห้อง<\/th><th>ค่าไฟ<\/th><th>หน่วยไฟ<\/th><th>ค่าน้ำ<\/th><th>หน่วยน้ำ<\/th><th>อื่นๆ<\/th><th>ยอดบิล<\/th><th>รับแล้ว<\/th><th>ค้าง<\/th><\/tr><\/thead><tbody>' +
     list.map(function (m) {
-      return '<tr><td class="l">' + monthLabel(m.month) + '<\/td><td>' + m.bills + '<\/td><td>' + money(m.rent) + '<\/td><td>' + money(m.elec) + '<\/td><td>' + fmt(m.elecUnits) + '<\/td><td>' + money(m.water) + '<\/td><td>' + fmt(m.waterUnits) + '<\/td><td>' + money(m.other) + '<\/td><td><b>' + money(m.billed) + '<\/b><\/td><td style="color:var(--ok)">' + money(m.paid) + '<\/td><td style="color:var(--bad)">' + (m.outstanding ? money(m.outstanding) : '–') + '<\/td><\/tr>';
+      return '<tr class="click" data-act="repMonth" data-m="' + m.month + '"><td class="l"><span class="link" style="padding:0">' + monthLabel(m.month) + ' ›<\/span><\/td><td>' + m.bills + '<\/td><td>' + money(m.rent) + '<\/td><td>' + money(m.elec) + '<\/td><td>' + fmt(m.elecUnits) + '<\/td><td>' + money(m.water) + '<\/td><td>' + fmt(m.waterUnits) + '<\/td><td>' + money(m.other) + '<\/td><td><b>' + money(m.billed) + '<\/b><\/td><td style="color:var(--ok)">' + money(m.paid) + '<\/td><td style="color:var(--bad)">' + (m.outstanding ? money(m.outstanding) : '–') + '<\/td><\/tr>';
     }).join('') + '<\/tbody><\/table><\/div><p class="muted" style="font-size:12.5px">ยอดบิล = ค่าห้อง+ไฟ+น้ำ+อื่นๆ ของเดือนนั้น (ไม่รวมยอดค้างยกมา) · หน่วยไฟ/น้ำรวมใช้เทียบกับบิลการไฟฟ้า/ประปาได้<\/p><\/div>';
   return h;
 }
@@ -2175,6 +2182,148 @@ var PRINT_CSS =
   '.bar button{font:inherit;padding:9px 20px;border-radius:8px;border:0;background:#d07a36;color:#fff;font-weight:700;cursor:pointer;font-size:15px}.bar button.g{background:#5a4a3d}' +
   '.bar small{display:block;color:#e9ddd0;font-weight:400;font-size:12.5px;margin-top:2px}' +
   '@media print{body{background:#fff}.bar{display:none}.page{margin:0}}';
+// ---------- รายงาน: รายละเอียดค่าใช้จ่ายรายห้องของเดือน ----------
+var REPC = {}; // แคชข้อมูลเดือน (getMonth) สำหรับรายงาน
+function repRows(d) {
+  // หนึ่งแถวต่อบิล เรียงตามลำดับห้อง: ค่าห้อง / ค่าปรับ / ไฟ / น้ำ / อื่นๆ / รวมเดือนนี้ / ค้างยกมา / สถานะ
+  return d.rows.filter(function (r) { return r.bill; }).map(function (r) {
+    var b = r.bill, fine = 0, other = b.other || 0, notes = [];
+    (b.extras || []).forEach(function (e) { if (/ค่าปรับ/.test(e.desc)) fine += e.amount; else { other += e.amount; notes.push(e.desc); } });
+    if (b.other) notes.unshift(b.otherName || 'ค่าบริการอื่น');
+    var month = r2((b.rent || 0) + fine + (b.elecAmt || 0) + (b.waterAmt || 0) + other);
+    return { room: b.room, tenant: b.tenant || r.tenant || '', rent: b.rent || 0, fine: fine, elec: b.elecAmt || 0, elecU: b.elecUnits, water: b.waterAmt || 0, waterU: b.waterUnits,
+      other: other, notes: notes.join(', '), month: month, arrears: b.arrears || 0, total: b.total || 0, paid: b.paidAmt || 0, status: b.status, carried: b.carriedTo, no: b.no };
+  });
+}
+function repSum(rows) {
+  var t = { rent: 0, fine: 0, elec: 0, elecU: 0, water: 0, waterU: 0, other: 0, month: 0, arrears: 0, total: 0, paid: 0 };
+  rows.forEach(function (r) { Object.keys(t).forEach(function (k) { t[k] += r[k] || 0; }); });
+  Object.keys(t).forEach(function (k) { t[k] = r2(t[k]); });
+  return t;
+}
+function repStatus(r) {
+  if (r.status === ST.PAID) return { t: 'ชำระแล้ว', c: 'ok' };
+  if (r.status === ST.CARRIED) return { t: 'ยกไปบิล ' + r.carried, c: 'gray' };
+  if (r.paid) return { t: 'ชำระบางส่วน ' + money(r.paid), c: 'warn' };
+  return { t: 'ค้างชำระ', c: 'bad' };
+}
+function openRepMonth(m) {
+  openModal('<div class="mh"><div><h3>ค่าใช้จ่ายรายห้อง · ' + monthLabel(m) + '<\/h3><div class="muted">กำลังโหลด…<\/div><\/div><button class="x" data-act="close">✕<\/button><\/div><div class="loading">กำลังโหลด…<\/div>', 'wide');
+  var go = function (d) { REPC[m] = d; if (MODAL_KIND === 'wide' && document.getElementById('modalBox').innerHTML.indexOf(monthLabel(m)) >= 0) renderRepMonth(m); };
+  if (REPC[m]) return go(REPC[m]);
+  if (m === S.month && S.data) return go(S.data);
+  api('getMonth', m).then(go).catch(function (e) { toast(errMsg(e), 'bad'); closeModal(); });
+}
+function renderRepMonth(m) {
+  var d = REPC[m], rows = repRows(d), t = repSum(rows), hasFine = t.fine !== 0, hasOther = t.other !== 0, hasArr = t.arrears !== 0;
+  var noBill = d.rows.filter(function (r) { return !r.bill; }).map(function (r) { return r.room; });
+  var h = '<div class="mh"><div><h3>ค่าใช้จ่ายรายห้อง · ' + monthLabel(m) + '<\/h3><div class="muted">' + rows.length + ' ห้องที่ออกบิล' + (noBill.length ? ' · ไม่มีบิล: ' + esc(noBill.join(', ')) : '') + '<\/div><\/div><button class="x" data-act="close">✕<\/button><\/div>';
+  h += '<div class="kpis" style="margin:8px 0 12px">' +
+    '<div class="kpi"><div class="l">ค่าห้อง<\/div><div class="v" style="font-size:20px">' + baht(t.rent) + '<\/div><\/div>' +
+    '<div class="kpi elec"><div class="l">ค่าไฟ<\/div><div class="v" style="font-size:20px">' + baht(t.elec) + '<\/div><div class="s">' + fmt(t.elecU) + ' หน่วย<\/div><\/div>' +
+    '<div class="kpi water"><div class="l">ค่าน้ำ<\/div><div class="v" style="font-size:20px">' + baht(t.water) + '<\/div><div class="s">' + fmt(t.waterU) + ' หน่วย<\/div><\/div>' +
+    '<div class="kpi pri"><div class="l">รวมเดือนนี้<\/div><div class="v" style="font-size:20px">' + baht(t.month) + '<\/div><div class="s">รับแล้ว ' + baht(t.paid) + '<\/div><\/div><\/div>';
+  if (!rows.length) h += '<div class="empty">เดือนนี้ยังไม่มีบิล<\/div>';
+  else h += '<div class="scrollx"><table class="t cards"><thead><tr><th class="l">ห้อง<\/th><th>ค่าห้อง<\/th>' + (hasFine ? '<th>ค่าปรับ<\/th>' : '') + '<th>ค่าไฟ<\/th><th>ค่าน้ำ<\/th>' + (hasOther ? '<th>อื่นๆ<\/th>' : '') + '<th>รวม<\/th>' + (hasArr ? '<th>ค้างยกมา<\/th>' : '') + '<th class="l">สถานะ<\/th><\/tr><\/thead><tbody>' +
+    rows.map(function (r) {
+      var st = repStatus(r);
+      return '<tr class="click" data-act="payDlg" data-no="' + esc(r.no) + '"><td class="l head" data-l="ห้อง"><span>' + esc(r.room) + (r.tenant ? '<small>' + esc(r.tenant) + '<\/small>' : '') + '<\/span><\/td>' +
+        '<td data-l="ค่าห้อง">' + money(r.rent) + '<\/td>' + (hasFine ? '<td data-l="ค่าปรับ">' + (r.fine ? money(r.fine) : '–') + '<\/td>' : '') +
+        '<td data-l="ค่าไฟ"><span>' + money(r.elec) + (r.elecU != null ? '<small>' + fmt(r.elecU) + ' หน่วย<\/small>' : '') + '<\/span><\/td>' +
+        '<td data-l="ค่าน้ำ"><span>' + money(r.water) + (r.waterU != null ? '<small>' + fmt(r.waterU) + ' หน่วย<\/small>' : '') + '<\/span><\/td>' +
+        (hasOther ? '<td data-l="อื่นๆ"><span>' + (r.other ? money(r.other) + '<small>' + esc(r.notes) + '<\/small>' : '–') + '<\/span><\/td>' : '') +
+        '<td data-l="รวม"><b>' + money(r.month) + '<\/b><\/td>' + (hasArr ? '<td data-l="ค้างยกมา">' + (r.arrears ? money(r.arrears) : '–') + '<\/td>' : '') +
+        '<td class="l" data-l="สถานะ"><span class="tag ' + st.c + '">' + esc(st.t) + '<\/span><\/td><\/tr>';
+    }).join('') +
+    '<tr class="tot"><td class="l head" data-l="">รวม ' + rows.length + ' ห้อง<\/td><td data-l="ค่าห้อง">' + money(t.rent) + '<\/td>' + (hasFine ? '<td data-l="ค่าปรับ">' + money(t.fine) + '<\/td>' : '') +
+    '<td data-l="ค่าไฟ"><span>' + money(t.elec) + '<small>' + fmt(t.elecU) + ' หน่วย<\/small><\/span><\/td><td data-l="ค่าน้ำ"><span>' + money(t.water) + '<small>' + fmt(t.waterU) + ' หน่วย<\/small><\/span><\/td>' +
+    (hasOther ? '<td data-l="อื่นๆ">' + money(t.other) + '<\/td>' : '') + '<td data-l="รวม">' + money(t.month) + '<\/td>' + (hasArr ? '<td data-l="ค้างยกมา">' + money(t.arrears) + '<\/td>' : '') +
+    '<td class="l" data-l="รับแล้ว">รับแล้ว ' + money(t.paid) + '<\/td><\/tr><\/tbody><\/table><\/div>';
+  h += '<p class="muted" style="font-size:12.5px">รวม = ค่าห้อง + ค่าปรับ + ไฟ + น้ำ + อื่นๆ ของเดือนนี้ (ไม่รวมยอดค้างยกมา) · กดที่ห้องเพื่อดูบิล<\/p>' +
+    '<div class="mbtns"><button class="btn primary grow" data-act="repPrint" data-m="' + m + '">🖨 พิมพ์รายงานเดือนนี้<\/button><\/div>';
+  var box = document.getElementById('modalBox'); box.innerHTML = h;
+}
+// หน้าต่างพิมพ์รายงาน (A4)
+var REP_CSS =
+  '@page{size:A4 portrait;margin:12mm 10mm}' +
+  '*{box-sizing:border-box}body{margin:0;font-family:Sarabun,Anuphan,Tahoma,sans-serif;color:#111;font-size:11pt;-webkit-print-color-adjust:exact;print-color-adjust:exact;background:#e5e0d8}' +
+  '.doc{width:210mm;min-height:297mm;background:#fff;margin:0 auto 6mm;padding:12mm 10mm}' +
+  '.rh{display:flex;align-items:center;gap:4mm;border-bottom:2px solid #7b3f22;padding-bottom:2.5mm;margin-bottom:3mm}' +
+  '.rh img{width:16mm;height:16mm;border-radius:3mm;object-fit:cover}.rh .n{flex:1}.rh b{font-size:16pt;color:#7b3f22;display:block;line-height:1.2}.rh small{color:#555;font-size:9.5pt}' +
+  '.rh .r{text-align:right}.rh .r b{color:#111;font-size:14pt}' +
+  'h2{font-size:13pt;margin:4mm 0 2mm}' +
+  'table{width:100%;border-collapse:collapse;font-size:10pt;font-variant-numeric:tabular-nums}' +
+  'th{background:#f4ebe1;font-weight:600;padding:1.4mm 1.6mm;border:1px solid #c9b9a7;text-align:right;white-space:nowrap}' +
+  'td{padding:1.1mm 1.6mm;border:1px solid #d8cdbf;text-align:right;white-space:nowrap}' +
+  'th.l,td.l{text-align:left}td small{color:#666;font-size:8.5pt;margin-left:1mm}' +
+  'tr.tot td{font-weight:700;background:#faf5ef;border-top:2px solid #7b3f22}' +
+  'tr{break-inside:avoid}thead{display:table-header-group}' +
+  '.sum{display:flex;gap:3mm;margin:3mm 0}.sum div{flex:1;border:1px solid #d8cdbf;border-radius:2mm;padding:1.5mm 2.5mm}.sum small{display:block;color:#666;font-size:9pt}.sum b{font-size:12.5pt}' +
+  '.ft{display:flex;justify-content:space-between;margin-top:6mm;font-size:9.5pt;color:#555}.sg{margin-top:14mm;display:flex;justify-content:flex-end}.sg div{width:65mm;text-align:center;border-top:1px dotted #555;padding-top:1mm;font-size:10pt}' +
+  '.bar{position:sticky;top:0;background:#2a211b;color:#fff;padding:10px 16px;display:flex;gap:12px;align-items:center;font-family:sans-serif;z-index:2;flex-wrap:wrap}' +
+  '.bar button{font:inherit;padding:9px 20px;border-radius:8px;border:0;background:#d07a36;color:#fff;font-weight:700;cursor:pointer;font-size:15px}.bar button.g{background:#5a4a3d}' +
+  '.bar small{display:block;color:#e9ddd0;font-weight:400;font-size:12.5px;margin-top:2px}' +
+  '@media print{body{background:#fff}.bar{display:none}.doc{width:auto;min-height:0;margin:0;padding:0}}';
+function printDoc(title, body) {
+  var w = window.open('', '_blank');
+  var doc = '<!DOCTYPE html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>' + esc(title) + '<\/title><link rel="stylesheet" href="' + FONT_CSS + '"><style>' + REP_CSS + '<\/style><\/head>' +
+    '<body><div class="bar"><div style="flex:1;min-width:220px"><b>' + esc(title) + '<\/b><small>ในหน้าต่างพิมพ์: กระดาษ A4 · แนวตั้ง · สเกล 100% · เปิด "กราฟิกพื้นหลัง" · หรือเลือก "บันทึกเป็น PDF"<\/small><\/div>' +
+    '<button onclick="window.print()">🖨 พิมพ์<\/button><button class="g" onclick="window.close()">ปิด<\/button><\/div><div class="doc">' + body + '<\/div><\/body><\/html>';
+  var target = w;
+  if (!target || target.closed) {
+    var fr = document.getElementById('printFrame');
+    if (!fr) { fr = document.createElement('iframe'); fr.id = 'printFrame'; document.body.appendChild(fr); }
+    target = fr.contentWindow;
+  }
+  target.document.open(); target.document.write(doc); target.document.close();
+  var gop = function () { try { target.focus(); target.print(); } catch (e) { } };
+  setTimeout(function () {
+    if (target.document.fonts && target.document.fonts.ready) target.document.fonts.ready.then(function () { setTimeout(gop, 300); });
+    else gop();
+  }, 500);
+}
+function repHead(title, sub) {
+  var s = S.data.settings;
+  return '<div class="rh"><img src="' + LOGO + '" alt=""><div class="n"><b>' + esc(s.dormName || 'หอพัก') + '<\/b><small>' + esc(s.address || '') + (s.phone ? ' · โทร ' + esc(s.phone) : '') + '<\/small><\/div>' +
+    '<div class="r"><b>' + esc(title) + '<\/b><br><small>' + esc(sub || '') + '<\/small><\/div><\/div>';
+}
+function repFoot() {
+  return '<div class="ft"><span>พิมพ์เมื่อ ' + dateTh(todayStr(), true) + '<\/span><span>' + esc(S.data.settings.dormName || '') + '<\/span><\/div>';
+}
+function printRepMonth(m) {
+  var d = REPC[m]; if (!d) return;
+  var rows = repRows(d), t = repSum(rows), hasFine = t.fine !== 0, hasOther = t.other !== 0, hasArr = t.arrears !== 0;
+  var body = repHead('สรุปค่าเช่าประจำเดือน', monthLabel(m)) +
+    '<div class="sum"><div><small>ค่าห้อง<\/small><b>' + money(t.rent) + '<\/b><\/div><div><small>ค่าไฟ (' + fmt(t.elecU) + ' หน่วย)<\/small><b>' + money(t.elec) + '<\/b><\/div>' +
+    '<div><small>ค่าน้ำ (' + fmt(t.waterU) + ' หน่วย)<\/small><b>' + money(t.water) + '<\/b><\/div><div><small>รวมทั้งเดือน<\/small><b>' + money(t.month) + '<\/b><\/div><div><small>รับเงินแล้ว<\/small><b>' + money(t.paid) + '<\/b><\/div><\/div>' +
+    '<table><thead><tr><th class="l">ห้อง<\/th><th class="l">ผู้เช่า<\/th><th>ค่าห้อง<\/th>' + (hasFine ? '<th>ค่าปรับ<\/th>' : '') + '<th>ค่าไฟ<\/th><th>ค่าน้ำ<\/th>' + (hasOther ? '<th>อื่นๆ<\/th>' : '') + '<th>รวม<\/th>' + (hasArr ? '<th>ค้างยกมา<\/th>' : '') + '<th class="l">สถานะ<\/th><\/tr><\/thead><tbody>' +
+    rows.map(function (r) {
+      return '<tr><td class="l"><b>' + esc(r.room) + '<\/b><\/td><td class="l">' + esc(r.tenant || '') + '<\/td><td>' + money(r.rent) + '<\/td>' + (hasFine ? '<td>' + (r.fine ? money(r.fine) : '-') + '<\/td>' : '') +
+        '<td>' + money(r.elec) + (r.elecU != null ? '<small>(' + fmt(r.elecU) + ')<\/small>' : '') + '<\/td><td>' + money(r.water) + (r.waterU != null ? '<small>(' + fmt(r.waterU) + ')<\/small>' : '') + '<\/td>' +
+        (hasOther ? '<td>' + (r.other ? money(r.other) : '-') + '<\/td>' : '') + '<td><b>' + money(r.month) + '<\/b><\/td>' + (hasArr ? '<td>' + (r.arrears ? money(r.arrears) : '-') + '<\/td>' : '') +
+        '<td class="l">' + esc(repStatus(r).t) + '<\/td><\/tr>';
+    }).join('') +
+    '<tr class="tot"><td class="l" colspan="2">รวม ' + rows.length + ' ห้อง<\/td><td>' + money(t.rent) + '<\/td>' + (hasFine ? '<td>' + money(t.fine) + '<\/td>' : '') + '<td>' + money(t.elec) + '<\/td><td>' + money(t.water) + '<\/td>' +
+    (hasOther ? '<td>' + money(t.other) + '<\/td>' : '') + '<td>' + money(t.month) + '<\/td>' + (hasArr ? '<td>' + money(t.arrears) + '<\/td>' : '') + '<td class="l"><\/td><\/tr><\/tbody><\/table>' +
+    '<div style="font-size:9pt;color:#666;margin-top:2mm">ตัวเลขในวงเล็บ = หน่วยที่ใช้ · รวม = ค่าห้อง + ค่าปรับ + ไฟ + น้ำ + อื่นๆ ของเดือนนี้ (ไม่รวมยอดค้างยกมา)<\/div>' +
+    '<div class="sg"><div>ผู้ตรวจสอบ<\/div><\/div>' + repFoot();
+  printDoc('สรุปค่าเช่า ' + monthLabel(m), body);
+}
+function printRepSummary() {
+  var list = S.sum || [];
+  if (!list.length) { toast('ยังไม่มีข้อมูล', 'bad'); return; }
+  var t = { bills: 0, rent: 0, elec: 0, elecUnits: 0, water: 0, waterUnits: 0, other: 0, billed: 0, paid: 0, outstanding: 0 };
+  list.forEach(function (m) { Object.keys(t).forEach(function (k) { t[k] += m[k] || 0; }); });
+  var span = monthLabel(list[list.length - 1].month) + ' – ' + monthLabel(list[0].month);
+  var body = repHead('สรุปรายรับรายเดือน', span) +
+    '<table><thead><tr><th class="l">เดือน<\/th><th>ห้อง<\/th><th>ค่าห้อง<\/th><th>ค่าไฟ<\/th><th>หน่วยไฟ<\/th><th>ค่าน้ำ<\/th><th>หน่วยน้ำ<\/th><th>อื่นๆ<\/th><th>ยอดบิล<\/th><th>รับแล้ว<\/th><th>ค้าง<\/th><\/tr><\/thead><tbody>' +
+    list.map(function (m) {
+      return '<tr><td class="l">' + monthLabel(m.month) + '<\/td><td>' + m.bills + '<\/td><td>' + money(m.rent) + '<\/td><td>' + money(m.elec) + '<\/td><td>' + fmt(m.elecUnits) + '<\/td><td>' + money(m.water) + '<\/td><td>' + fmt(m.waterUnits) + '<\/td><td>' + money(m.other) + '<\/td><td><b>' + money(m.billed) + '<\/b><\/td><td>' + money(m.paid) + '<\/td><td>' + (m.outstanding ? money(m.outstanding) : '-') + '<\/td><\/tr>';
+    }).join('') +
+    '<tr class="tot"><td class="l">รวม ' + list.length + ' เดือน<\/td><td><\/td><td>' + money(t.rent) + '<\/td><td>' + money(t.elec) + '<\/td><td>' + fmt(t.elecUnits) + '<\/td><td>' + money(t.water) + '<\/td><td>' + fmt(t.waterUnits) + '<\/td><td>' + money(t.other) + '<\/td><td>' + money(t.billed) + '<\/td><td>' + money(t.paid) + '<\/td><td>' + (t.outstanding ? money(t.outstanding) : '-') + '<\/td><\/tr><\/tbody><\/table>' +
+    '<div style="font-size:9pt;color:#666;margin-top:2mm">ยอดบิล = ค่าห้อง + ไฟ + น้ำ + อื่นๆ ของเดือนนั้น (ไม่รวมยอดค้างยกมา)<\/div>' + repFoot();
+  printDoc('สรุปรายรับรายเดือน', body);
+}
 function printBills(bills, kind, layout) {
   if (!bills.length) { toast('ไม่มีบิลให้พิมพ์', 'bad'); return; }
   var w = window.open('', '_blank');
@@ -2387,7 +2536,10 @@ document.addEventListener('click', function (ev) {
   else if (a === 'cancelBill') confirmBox('ยกเลิกบิล ' + no, 'ยกเลิกบิลนี้ (ข้อมูลยังเก็บในชีต สถานะ "ยกเลิก") แล้วออกบิลใหม่ได้ที่หน้าใบแจ้งหนี้', 'ยกเลิกบิล', function () {
     return api('cancelBill', no, S.month).then(function (d) { setData(d); render(); closeModal(); toast('ยกเลิกบิลแล้ว'); });
   }, true);
-  else if (a === 'summary') busyBtn(t, loadSummary);
+  else if (a === 'summary') busyBtn(t, function () { REPC = {}; return loadSummary(); });
+  else if (a === 'repMonth') openRepMonth(t.dataset.m);
+  else if (a === 'repPrint') printRepMonth(t.dataset.m);
+  else if (a === 'repPrintSum') printRepSummary();
   else if (a === 'bkReload') { S.bkErr = null; render(); }
   else if (a === 'bkDay') { if (S.bk) openBookDay(t.dataset.d); }
   else if (a === 'bkNew') { if (S.bk) openBook(null, { checkIn: t.dataset.d, room: room }); }
