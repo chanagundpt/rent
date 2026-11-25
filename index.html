@@ -159,6 +159,9 @@ table.t th.l,table.t td.l{text-align:left}
 table.t td small{display:block;color:var(--mut);font-size:12px}
 table.t tfoot td{font-weight:700;border-bottom:0}
 table.t tr.click{cursor:pointer}
+table.t.rt{table-layout:fixed;min-width:640px}
+table.t.rt th,table.t.rt td{text-align:center}
+table.t.rt td small{white-space:nowrap}
 table.t tr.click:hover td{background:var(--line2)}
 table.t tr.tot td{font-weight:700;background:var(--pri-soft);border-bottom:0}
 .scrollx{overflow-x:auto}
@@ -319,6 +322,7 @@ input.big::placeholder{font-size:16px;font-weight:500;letter-spacing:0}
   table.t.cards td.head span{display:flex;justify-content:space-between;width:100%;align-items:baseline}
   table.t.cards td span small{display:inline;margin-left:6px}
   table.t.cards tr.tot{background:var(--pri-soft)}
+  table.t.cards.rt{min-width:0}
 }
 @media (max-width:860px){
   .card.calc{padding:12px 8px}
@@ -2204,7 +2208,7 @@ function repSum(rows) {
 function repStatus(r) {
   if (r.status === ST.PAID) return { t: 'ชำระแล้ว', c: 'ok' };
   if (r.status === ST.CARRIED) return { t: 'ยกไปบิล ' + r.carried, c: 'gray' };
-  if (r.paid) return { t: 'ชำระบางส่วน ' + money(r.paid), c: 'warn' };
+  if (r.paid) return { t: 'ชำระบางส่วน', c: 'warn', sub: 'รับแล้ว ' + money(r.paid) };
   return { t: 'ค้างชำระ', c: 'bad' };
 }
 function openRepMonth(m) {
@@ -2224,7 +2228,7 @@ function renderRepMonth(m) {
     '<div class="kpi water"><div class="l">ค่าน้ำ<\/div><div class="v" style="font-size:20px">' + baht(t.water) + '<\/div><div class="s">' + fmt(t.waterU) + ' หน่วย<\/div><\/div>' +
     '<div class="kpi pri"><div class="l">รวมเดือนนี้<\/div><div class="v" style="font-size:20px">' + baht(t.month) + '<\/div><div class="s">รับแล้ว ' + baht(t.paid) + '<\/div><\/div><\/div>';
   if (!rows.length) h += '<div class="empty">เดือนนี้ยังไม่มีบิล<\/div>';
-  else h += '<div class="scrollx"><table class="t cards"><thead><tr><th class="l">ห้อง<\/th><th>ค่าห้อง<\/th>' + (hasFine ? '<th>ค่าปรับ<\/th>' : '') + '<th>ค่าไฟ<\/th><th>ค่าน้ำ<\/th>' + (hasOther ? '<th>อื่นๆ<\/th>' : '') + '<th>รวม<\/th>' + (hasArr ? '<th>ค้างยกมา<\/th>' : '') + '<th class="l">สถานะ<\/th><\/tr><\/thead><tbody>' +
+  else h += '<div class="scrollx"><table class="t cards rt"><thead><tr><th style="width:13%">ห้อง<\/th><th>ค่าห้อง<\/th>' + (hasFine ? '<th>ค่าปรับ<\/th>' : '') + '<th>ค่าไฟ<\/th><th>ค่าน้ำ<\/th>' + (hasOther ? '<th>อื่นๆ<\/th>' : '') + '<th>รวม<\/th>' + (hasArr ? '<th>ค้างยกมา<\/th>' : '') + '<th style="width:17%">สถานะ<\/th><\/tr><\/thead><tbody>' +
     rows.map(function (r) {
       var st = repStatus(r);
       return '<tr class="click" data-act="payDlg" data-no="' + esc(r.no) + '"><td class="l head" data-l="ห้อง"><span>' + esc(r.room) + (r.tenant ? '<small>' + esc(r.tenant) + '<\/small>' : '') + '<\/span><\/td>' +
@@ -2233,7 +2237,7 @@ function renderRepMonth(m) {
         '<td data-l="ค่าน้ำ"><span>' + money(r.water) + (r.waterU != null ? '<small>' + fmt(r.waterU) + ' หน่วย<\/small>' : '') + '<\/span><\/td>' +
         (hasOther ? '<td data-l="อื่นๆ"><span>' + (r.other ? money(r.other) + '<small>' + esc(r.notes) + '<\/small>' : '–') + '<\/span><\/td>' : '') +
         '<td data-l="รวม"><b>' + money(r.month) + '<\/b><\/td>' + (hasArr ? '<td data-l="ค้างยกมา">' + (r.arrears ? money(r.arrears) : '–') + '<\/td>' : '') +
-        '<td class="l" data-l="สถานะ"><span class="tag ' + st.c + '">' + esc(st.t) + '<\/span><\/td><\/tr>';
+        '<td class="l" data-l="สถานะ"><span><span class="tag ' + st.c + '">' + esc(st.t) + '<\/span>' + (st.sub ? '<small style="display:block">' + esc(st.sub) + '<\/small>' : '') + '<\/span><\/td><\/tr>';
     }).join('') +
     '<tr class="tot"><td class="l head" data-l="">รวม ' + rows.length + ' ห้อง<\/td><td data-l="ค่าห้อง">' + money(t.rent) + '<\/td>' + (hasFine ? '<td data-l="ค่าปรับ">' + money(t.fine) + '<\/td>' : '') +
     '<td data-l="ค่าไฟ"><span>' + money(t.elec) + '<small>' + fmt(t.elecU) + ' หน่วย<\/small><\/span><\/td><td data-l="ค่าน้ำ"><span>' + money(t.water) + '<small>' + fmt(t.waterU) + ' หน่วย<\/small><\/span><\/td>' +
@@ -2252,10 +2256,10 @@ var REP_CSS =
   '.rh img{width:16mm;height:16mm;border-radius:3mm;object-fit:cover}.rh .n{flex:1}.rh b{font-size:16pt;color:#7b3f22;display:block;line-height:1.2}.rh small{color:#555;font-size:9.5pt}' +
   '.rh .r{text-align:right}.rh .r b{color:#111;font-size:14pt}' +
   'h2{font-size:13pt;margin:4mm 0 2mm}' +
-  'table{width:100%;border-collapse:collapse;font-size:10pt;font-variant-numeric:tabular-nums}' +
-  'th{background:#f4ebe1;font-weight:600;padding:1.4mm 1.6mm;border:1px solid #c9b9a7;text-align:right;white-space:nowrap}' +
-  'td{padding:1.1mm 1.6mm;border:1px solid #d8cdbf;text-align:right;white-space:nowrap}' +
-  'th.l,td.l{text-align:left}td small{color:#666;font-size:8.5pt;margin-left:1mm}' +
+  'table{width:100%;border-collapse:collapse;font-size:10pt;font-variant-numeric:tabular-nums;table-layout:fixed}' +
+  'th{background:#f4ebe1;font-weight:600;padding:1.4mm 1mm;border:1px solid #c9b9a7;text-align:center;white-space:nowrap;vertical-align:middle}' +
+  'td{padding:1.1mm 1mm;border:1px solid #d8cdbf;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+  'td.l{text-align:left;padding-left:2mm}td small{color:#666;font-size:8.5pt;margin-left:1mm}' +
   'tr.tot td{font-weight:700;background:#faf5ef;border-top:2px solid #7b3f22}' +
   'tr{break-inside:avoid}thead{display:table-header-group}' +
   '.sum{display:flex;gap:3mm;margin:3mm 0}.sum div{flex:1;border:1px solid #d8cdbf;border-radius:2mm;padding:1.5mm 2.5mm}.sum small{display:block;color:#666;font-size:9pt}.sum b{font-size:12.5pt}' +
@@ -2296,15 +2300,15 @@ function printRepMonth(m) {
   var body = repHead('สรุปค่าเช่าประจำเดือน', monthLabel(m)) +
     '<div class="sum"><div><small>ค่าห้อง<\/small><b>' + money(t.rent) + '<\/b><\/div><div><small>ค่าไฟ (' + fmt(t.elecU) + ' หน่วย)<\/small><b>' + money(t.elec) + '<\/b><\/div>' +
     '<div><small>ค่าน้ำ (' + fmt(t.waterU) + ' หน่วย)<\/small><b>' + money(t.water) + '<\/b><\/div><div><small>รวมทั้งเดือน<\/small><b>' + money(t.month) + '<\/b><\/div><div><small>รับเงินแล้ว<\/small><b>' + money(t.paid) + '<\/b><\/div><\/div>' +
-    '<table><thead><tr><th class="l">ห้อง<\/th><th class="l">ผู้เช่า<\/th><th>ค่าห้อง<\/th>' + (hasFine ? '<th>ค่าปรับ<\/th>' : '') + '<th>ค่าไฟ<\/th><th>ค่าน้ำ<\/th>' + (hasOther ? '<th>อื่นๆ<\/th>' : '') + '<th>รวม<\/th>' + (hasArr ? '<th>ค้างยกมา<\/th>' : '') + '<th class="l">สถานะ<\/th><\/tr><\/thead><tbody>' +
+    '<table><thead><tr><th style="width:8%">ห้อง<\/th><th style="width:13%">ผู้เช่า<\/th><th>ค่าห้อง<\/th>' + (hasFine ? '<th>ค่าปรับ<\/th>' : '') + '<th>ค่าไฟ<\/th><th>ค่าน้ำ<\/th>' + (hasOther ? '<th>อื่นๆ<\/th>' : '') + '<th>รวม<\/th>' + (hasArr ? '<th>ค้างยกมา<\/th>' : '') + '<th style="width:15%">สถานะ<\/th><\/tr><\/thead><tbody>' +
     rows.map(function (r) {
-      return '<tr><td class="l"><b>' + esc(r.room) + '<\/b><\/td><td class="l">' + esc(r.tenant || '') + '<\/td><td>' + money(r.rent) + '<\/td>' + (hasFine ? '<td>' + (r.fine ? money(r.fine) : '-') + '<\/td>' : '') +
+      return '<tr><td><b>' + esc(r.room) + '<\/b><\/td><td class="l">' + esc(r.tenant || '') + '<\/td><td>' + money(r.rent) + '<\/td>' + (hasFine ? '<td>' + (r.fine ? money(r.fine) : '-') + '<\/td>' : '') +
         '<td>' + money(r.elec) + (r.elecU != null ? '<small>(' + fmt(r.elecU) + ')<\/small>' : '') + '<\/td><td>' + money(r.water) + (r.waterU != null ? '<small>(' + fmt(r.waterU) + ')<\/small>' : '') + '<\/td>' +
         (hasOther ? '<td>' + (r.other ? money(r.other) : '-') + '<\/td>' : '') + '<td><b>' + money(r.month) + '<\/b><\/td>' + (hasArr ? '<td>' + (r.arrears ? money(r.arrears) : '-') + '<\/td>' : '') +
-        '<td class="l">' + esc(repStatus(r).t) + '<\/td><\/tr>';
+        '<td style="white-space:normal">' + esc(repStatus(r).t) + (repStatus(r).sub ? '<br><small style="margin:0">' + esc(repStatus(r).sub) + '<\/small>' : '') + '<\/td><\/tr>';
     }).join('') +
-    '<tr class="tot"><td class="l" colspan="2">รวม ' + rows.length + ' ห้อง<\/td><td>' + money(t.rent) + '<\/td>' + (hasFine ? '<td>' + money(t.fine) + '<\/td>' : '') + '<td>' + money(t.elec) + '<\/td><td>' + money(t.water) + '<\/td>' +
-    (hasOther ? '<td>' + money(t.other) + '<\/td>' : '') + '<td>' + money(t.month) + '<\/td>' + (hasArr ? '<td>' + money(t.arrears) + '<\/td>' : '') + '<td class="l"><\/td><\/tr><\/tbody><\/table>' +
+    '<tr class="tot"><td colspan="2">รวม ' + rows.length + ' ห้อง<\/td><td>' + money(t.rent) + '<\/td>' + (hasFine ? '<td>' + money(t.fine) + '<\/td>' : '') + '<td>' + money(t.elec) + '<\/td><td>' + money(t.water) + '<\/td>' +
+    (hasOther ? '<td>' + money(t.other) + '<\/td>' : '') + '<td>' + money(t.month) + '<\/td>' + (hasArr ? '<td>' + money(t.arrears) + '<\/td>' : '') + '<td><\/td><\/tr><\/tbody><\/table>' +
     '<div style="font-size:9pt;color:#666;margin-top:2mm">ตัวเลขในวงเล็บ = หน่วยที่ใช้ · รวม = ค่าห้อง + ค่าปรับ + ไฟ + น้ำ + อื่นๆ ของเดือนนี้ (ไม่รวมยอดค้างยกมา)<\/div>' +
     '<div class="sg"><div>ผู้ตรวจสอบ<\/div><\/div>' + repFoot();
   printDoc('สรุปค่าเช่า ' + monthLabel(m), body);
@@ -2316,11 +2320,11 @@ function printRepSummary() {
   list.forEach(function (m) { Object.keys(t).forEach(function (k) { t[k] += m[k] || 0; }); });
   var span = monthLabel(list[list.length - 1].month) + ' – ' + monthLabel(list[0].month);
   var body = repHead('สรุปรายรับรายเดือน', span) +
-    '<table><thead><tr><th class="l">เดือน<\/th><th>ห้อง<\/th><th>ค่าห้อง<\/th><th>ค่าไฟ<\/th><th>หน่วยไฟ<\/th><th>ค่าน้ำ<\/th><th>หน่วยน้ำ<\/th><th>อื่นๆ<\/th><th>ยอดบิล<\/th><th>รับแล้ว<\/th><th>ค้าง<\/th><\/tr><\/thead><tbody>' +
+    '<table><thead><tr><th style="width:14%">เดือน<\/th><th style="width:6%">ห้อง<\/th><th>ค่าห้อง<\/th><th>ค่าไฟ<\/th><th>หน่วยไฟ<\/th><th>ค่าน้ำ<\/th><th>หน่วยน้ำ<\/th><th>อื่นๆ<\/th><th>ยอดบิล<\/th><th>รับแล้ว<\/th><th>ค้าง<\/th><\/tr><\/thead><tbody>' +
     list.map(function (m) {
-      return '<tr><td class="l">' + monthLabel(m.month) + '<\/td><td>' + m.bills + '<\/td><td>' + money(m.rent) + '<\/td><td>' + money(m.elec) + '<\/td><td>' + fmt(m.elecUnits) + '<\/td><td>' + money(m.water) + '<\/td><td>' + fmt(m.waterUnits) + '<\/td><td>' + money(m.other) + '<\/td><td><b>' + money(m.billed) + '<\/b><\/td><td>' + money(m.paid) + '<\/td><td>' + (m.outstanding ? money(m.outstanding) : '-') + '<\/td><\/tr>';
+      return '<tr><td>' + monthLabel(m.month) + '<\/td><td>' + m.bills + '<\/td><td>' + money(m.rent) + '<\/td><td>' + money(m.elec) + '<\/td><td>' + fmt(m.elecUnits) + '<\/td><td>' + money(m.water) + '<\/td><td>' + fmt(m.waterUnits) + '<\/td><td>' + money(m.other) + '<\/td><td><b>' + money(m.billed) + '<\/b><\/td><td>' + money(m.paid) + '<\/td><td>' + (m.outstanding ? money(m.outstanding) : '-') + '<\/td><\/tr>';
     }).join('') +
-    '<tr class="tot"><td class="l">รวม ' + list.length + ' เดือน<\/td><td><\/td><td>' + money(t.rent) + '<\/td><td>' + money(t.elec) + '<\/td><td>' + fmt(t.elecUnits) + '<\/td><td>' + money(t.water) + '<\/td><td>' + fmt(t.waterUnits) + '<\/td><td>' + money(t.other) + '<\/td><td>' + money(t.billed) + '<\/td><td>' + money(t.paid) + '<\/td><td>' + (t.outstanding ? money(t.outstanding) : '-') + '<\/td><\/tr><\/tbody><\/table>' +
+    '<tr class="tot"><td>รวม ' + list.length + ' เดือน<\/td><td><\/td><td>' + money(t.rent) + '<\/td><td>' + money(t.elec) + '<\/td><td>' + fmt(t.elecUnits) + '<\/td><td>' + money(t.water) + '<\/td><td>' + fmt(t.waterUnits) + '<\/td><td>' + money(t.other) + '<\/td><td>' + money(t.billed) + '<\/td><td>' + money(t.paid) + '<\/td><td>' + (t.outstanding ? money(t.outstanding) : '-') + '<\/td><\/tr><\/tbody><\/table>' +
     '<div style="font-size:9pt;color:#666;margin-top:2mm">ยอดบิล = ค่าห้อง + ไฟ + น้ำ + อื่นๆ ของเดือนนั้น (ไม่รวมยอดค้างยกมา)<\/div>' + repFoot();
   printDoc('สรุปรายรับรายเดือน', body);
 }
